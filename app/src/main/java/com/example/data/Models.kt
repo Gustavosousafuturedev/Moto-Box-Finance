@@ -17,7 +17,9 @@ data class Delivery(
     val paymentMethod: String, // "Pix", "Dinheiro", "Cartão", "Outro"
     val distanceKm: Double,
     val deliveryTimeMinutes: Int? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val quantity: Int = 1,
+    val feePerDelivery: Double = 0.0
 )
 
 @Entity(tableName = "establishments")

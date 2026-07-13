@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/motobox_logo_1783950743070"
+        android:drawable="@drawable/motobox_logo"
         android:gravity="center" />
 </layer-list>

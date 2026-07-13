@@ -103,7 +103,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         distanceKm: Double,
         clientName: String?,
         notes: String,
-        deliveryTimeMinutes: Int? = null
+        deliveryTimeMinutes: Int? = null,
+        quantity: Int = 1,
+        feePerDelivery: Double = 0.0
     ) {
         viewModelScope.launch {
             // Find establishment by name or create a new one
@@ -133,7 +135,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 paymentMethod = paymentMethod,
                 distanceKm = distanceKm,
                 deliveryTimeMinutes = deliveryTimeMinutes,
-                notes = notes
+                notes = notes,
+                quantity = quantity,
+                feePerDelivery = feePerDelivery
+            )
+            repository.insertDelivery(delivery)
+        }
+    }
+
+    fun updateDelivery(
+        id: Int,
+        date: Long,
+        time: String,
+        establishmentName: String,
+        neighborhood: String,
+        city: String,
+        value: Double,
+        paymentMethod: String,
+        distanceKm: Double,
+        clientName: String?,
+        notes: String,
+        deliveryTimeMinutes: Int? = null,
+        quantity: Int = 1,
+        feePerDelivery: Double = 0.0
+    ) {
+        viewModelScope.launch {
+            val allEst = repository.allEstablishments.first()
+            var estId = allEst.find { it.name.equals(establishmentName, ignoreCase = true) }?.id ?: 0
+            
+            if (estId == 0) {
+                val newEst = Establishment(
+                    name = establishmentName,
+                    city = city,
+                    neighborhood = neighborhood,
+                    notes = "Cadastrado automaticamente via entrega"
+                )
+                estId = repository.insertEstablishment(newEst).toInt()
+            }
+
+            val delivery = Delivery(
+                id = id,
+                date = date,
+                time = time,
+                establishmentId = estId,
+                establishmentName = establishmentName,
+                clientName = clientName,
+                neighborhood = neighborhood,
+                city = city,
+                value = value,
+                paymentMethod = paymentMethod,
+                distanceKm = distanceKm,
+                deliveryTimeMinutes = deliveryTimeMinutes,
+                notes = notes,
+                quantity = quantity,
+                feePerDelivery = feePerDelivery
             )
             repository.insertDelivery(delivery)
         }
@@ -142,6 +197,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun insertEstablishment(name: String, address: String, neighborhood: String, city: String, phone: String, contact: String, notes: String) {
         viewModelScope.launch {
             val est = Establishment(
+                name = name,
+                address = address,
+                neighborhood = neighborhood,
+                city = city,
+                phone = phone,
+                contact = contact,
+                notes = notes
+            )
+            repository.insertEstablishment(est)
+        }
+    }
+
+    fun updateEstablishment(id: Int, name: String, address: String, neighborhood: String, city: String, phone: String, contact: String, notes: String) {
+        viewModelScope.launch {
+            val est = Establishment(
+                id = id,
                 name = name,
                 address = address,
                 neighborhood = neighborhood,
@@ -332,7 +403,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         
         val netProfit = delList.sumOf { it.value } - totalExpenses
 
-        val totalDeliveriesCount = delList.size
+        val totalDeliveriesCount = delList.sumOf { it.quantity }
         val totalDistanceKm = delList.sumOf { it.distanceKm }
 
         // Goals mapping

@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         Maintenance::class,
         Goal::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

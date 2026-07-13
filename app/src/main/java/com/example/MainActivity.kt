@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +47,19 @@ import com.example.ui.components.PieChart
 import com.example.ui.theme.MyApplicationTheme
 import java.text.SimpleDateFormat
 import java.util.*
+import android.content.ContentValues
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.graphics.Typeface
+import android.graphics.Color as AndroidColor
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -65,6 +79,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Request Notification permission if needed
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+
+        // Schedule daily notification reminders at 00:00
+        scheduleDailyNotification(this)
+
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
             
@@ -110,6 +135,12 @@ fun MainAppScaffold(
     val voiceProcessing by viewModel.voiceProcessing.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Dialog state variables
+    var showAddDeliveryDialog by remember { mutableStateOf(false) }
+    var editingDelivery by remember { mutableStateOf<Delivery?>(null) }
+    var showPartnersDialog by remember { mutableStateOf(false) }
+    val establishments by viewModel.establishments.collectAsStateWithLifecycle()
+
     // Alert badge count based on maintenance warnings
     val maintenances by viewModel.maintenances.collectAsStateWithLifecycle()
     val odometerAlerts = remember(maintenances) {
@@ -140,17 +171,45 @@ fun MainAppScaffold(
         },
         floatingActionButton = {
             if (currentScreen == Screen.Dashboard || currentScreen == Screen.CadastroEntrega) {
-                FloatingActionButton(
-                    onClick = onTriggerVoiceInput,
-                    containerColor = MaterialTheme.colorScheme.tertiary,
-                    contentColor = MaterialTheme.colorScheme.onTertiary,
-                    shape = CircleShape,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    if (voiceProcessing) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onTertiary, modifier = Modifier.size(24.dp))
-                    } else {
-                        Icon(Icons.Filled.Mic, contentDescription = "Comando de Voz", modifier = Modifier.size(28.dp))
+                    // Botão de Parceiros (#bf41ce)
+                    FloatingActionButton(
+                        onClick = { showPartnersDialog = true },
+                        containerColor = Color(0xFFBF41CE),
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Filled.Storefront, contentDescription = "Parceiros", modifier = Modifier.size(24.dp))
+                    }
+
+                    // Botão de Lançar Entrega (#42ff00)
+                    FloatingActionButton(
+                        onClick = { showAddDeliveryDialog = true },
+                        containerColor = Color(0xFF42FF00),
+                        contentColor = Color.Black,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Lançar Entrega", modifier = Modifier.size(28.dp))
+                    }
+
+                    // Botão do Comando de Voz (existente)
+                    FloatingActionButton(
+                        onClick = onTriggerVoiceInput,
+                        containerColor = MaterialTheme.colorScheme.tertiary,
+                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        if (voiceProcessing) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.onTertiary, modifier = Modifier.size(24.dp))
+                        } else {
+                            Icon(Icons.Filled.Mic, contentDescription = "Comando de Voz", modifier = Modifier.size(28.dp))
+                        }
                     }
                 }
             }
@@ -163,7 +222,7 @@ fun MainAppScaffold(
         ) {
             when (currentScreen) {
                 Screen.Dashboard -> DashboardScreen(viewModel)
-                Screen.CadastroEntrega -> DeliveriesScreen(viewModel)
+                Screen.CadastroEntrega -> DeliveriesScreen(viewModel, onEditDelivery = { editingDelivery = it })
                 Screen.CadastroEstabelecimento -> EstablishmentsScreen(viewModel)
                 Screen.ControleCombustivel -> FuelScreen(viewModel)
                 Screen.ControleDespesas -> ExpensesScreen(viewModel)
@@ -245,6 +304,267 @@ fun MainAppScaffold(
             }
         }
     }
+
+    if (showAddDeliveryDialog) {
+        AddEditDeliveryDialog(
+            delivery = null,
+            establishments = establishments,
+            onDismiss = { showAddDeliveryDialog = false },
+            onSave = { name, neigh, cty, valPrice, payMet, dist, cliName, notesText, qty, fee ->
+                viewModel.insertDelivery(
+                    establishmentName = name,
+                    neighborhood = neigh,
+                    city = cty,
+                    value = valPrice,
+                    paymentMethod = payMet,
+                    distanceKm = dist,
+                    clientName = cliName,
+                    notes = notesText,
+                    quantity = qty,
+                    feePerDelivery = fee
+                )
+                showAddDeliveryDialog = false
+                Toast.makeText(context, "Entrega lançada com sucesso!", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    editingDelivery?.let { delivery ->
+        AddEditDeliveryDialog(
+            delivery = delivery,
+            establishments = establishments,
+            onDismiss = { editingDelivery = null },
+            onSave = { name, neigh, cty, valPrice, payMet, dist, cliName, notesText, qty, fee ->
+                viewModel.updateDelivery(
+                    id = delivery.id,
+                    date = delivery.date,
+                    time = delivery.time,
+                    establishmentName = name,
+                    neighborhood = neigh,
+                    city = cty,
+                    value = valPrice,
+                    paymentMethod = payMet,
+                    distanceKm = dist,
+                    clientName = cliName,
+                    notes = notesText,
+                    quantity = qty,
+                    feePerDelivery = fee
+                )
+                editingDelivery = null
+                Toast.makeText(context, "Entrega atualizada com sucesso!", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showPartnersDialog) {
+        AlertDialog(
+            onDismissRequest = { showPartnersDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Gerenciar Parceiros", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { showPartnersDialog = false }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Fechar")
+                    }
+                }
+            },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 500.dp)) {
+                    EstablishmentsScreen(viewModel = viewModel)
+                }
+            },
+            confirmButton = {}
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddEditDeliveryDialog(
+    delivery: com.example.data.Delivery? = null,
+    establishments: List<com.example.data.Establishment>,
+    onDismiss: () -> Unit,
+    onSave: (
+        establishmentName: String,
+        neighborhood: String,
+        city: String,
+        value: Double,
+        paymentMethod: String,
+        distanceKm: Double,
+        clientName: String?,
+        notes: String,
+        quantity: Int,
+        feePerDelivery: Double
+    ) -> Unit
+) {
+    var estName by remember { mutableStateOf(delivery?.establishmentName ?: "") }
+    var clientName by remember { mutableStateOf(delivery?.clientName ?: "") }
+    var neighborhood by remember { mutableStateOf(delivery?.neighborhood ?: "") }
+    var city by remember { mutableStateOf(delivery?.city ?: "São Paulo") }
+    var quantityStr by remember { mutableStateOf(delivery?.quantity?.toString() ?: "1") }
+    
+    val initialFee = if (delivery != null) {
+        if (delivery.feePerDelivery > 0.0) delivery.feePerDelivery else (delivery.value / (delivery.quantity.coerceAtLeast(1)))
+    } else {
+        0.0
+    }
+    
+    var feePerDeliveryStr by remember { mutableStateOf(if (initialFee > 0.0) initialFee.toString() else "") }
+    var distanceStr by remember { mutableStateOf(delivery?.distanceKm?.toString() ?: "") }
+    var paymentMethod by remember { mutableStateOf(delivery?.paymentMethod ?: "Pix") }
+    var notes by remember { mutableStateOf(delivery?.notes ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = if (delivery == null) "Lançar Nova Entrega" else "Editar Entrega",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = estName,
+                    onValueChange = { estName = it },
+                    label = { Text("Nome do Estabelecimento *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = clientName,
+                    onValueChange = { clientName = it },
+                    label = { Text("Cliente (opcional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = neighborhood,
+                    onValueChange = { neighborhood = it },
+                    label = { Text("Bairro Destino *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = city,
+                    onValueChange = { city = it },
+                    label = { Text("Cidade *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = quantityStr,
+                        onValueChange = { quantityStr = it },
+                        label = { Text("Qtd. Entregas *") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = feePerDeliveryStr,
+                        onValueChange = { feePerDeliveryStr = it },
+                        label = { Text("Taxa/Entrega (R$) *") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = distanceStr,
+                        onValueChange = { distanceStr = it },
+                        label = { Text("Distância (km) *") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    val q = quantityStr.toIntOrNull() ?: 1
+                    val f = feePerDeliveryStr.replace(',', '.').toDoubleOrNull() ?: 0.0
+                    val totalVal = q * f
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Valor Total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("R$ %.2f".format(totalVal), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                Column {
+                    Text("Forma de Pagamento", style = MaterialTheme.typography.labelMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val methods = listOf("Pix", "Dinheiro", "Cartão", "Outro")
+                        methods.forEach { method ->
+                            FilterChip(
+                                selected = paymentMethod == method,
+                                onClick = { paymentMethod = method },
+                                label = { Text(method) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Observações") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val quantity = quantityStr.toIntOrNull() ?: 1
+                    val fee = feePerDeliveryStr.replace(',', '.').toDoubleOrNull() ?: 0.0
+                    val value = quantity * fee
+                    val distance = distanceStr.replace(',', '.').toDoubleOrNull()
+                    if (estName.isNotEmpty() && neighborhood.isNotEmpty() && feePerDeliveryStr.isNotEmpty() && distance != null) {
+                        onSave(
+                            estName,
+                            neighborhood,
+                            city,
+                            value,
+                            paymentMethod,
+                            distance,
+                            clientName.ifEmpty { null },
+                            notes,
+                            quantity,
+                            fee
+                        )
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Salvar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
 
 // --- TOP HEADER TOOLBAR ---
@@ -270,15 +590,15 @@ fun HeaderBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
+                Image(
+                    painter = painterResource(id = R.drawable.motobox_logo),
+                    contentDescription = "Logo MOTOBOX Finance",
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Motorcycle, contentDescription = "Logo MOTOBOX Finance", modifier = Modifier.size(24.dp))
-                }
+                        .background(Color.White)
+                        .border(1.5.dp, MaterialTheme.colorScheme.onPrimary, CircleShape)
+                )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
@@ -342,7 +662,6 @@ fun BottomNavBar(
         val navItems = listOf(
             Triple(Screen.Dashboard, Icons.Filled.Dashboard, "Painel"),
             Triple(Screen.CadastroEntrega, Icons.Filled.DeliveryDining, "Entregas"),
-            Triple(Screen.ControleCombustivel, Icons.Filled.LocalGasStation, "Combustível"),
             Triple(Screen.ControleDespesas, Icons.Filled.ReceiptLong, "Despesas"),
             Triple(Screen.Relatorios, Icons.Filled.Summarize, "Relatórios")
         )
@@ -412,6 +731,42 @@ fun DashboardScreen(viewModel: MainViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Brand Logo Banner
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.motobox_logo),
+                    contentDescription = "MOTOBOX Logo",
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        "MOTOBOX Finance",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "Seu assistente financeiro definitivo para entregas.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
         // Welcoming Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -562,26 +917,12 @@ fun GoalBar(label: String, current: Double, target: Double, progress: Float) {
 // TELA 2: CADASTRO DE ENTREGAS & HISTÓRICO
 // =====================================================
 @Composable
-fun DeliveriesScreen(viewModel: MainViewModel) {
+fun DeliveriesScreen(
+    viewModel: MainViewModel,
+    onEditDelivery: (Delivery) -> Unit
+) {
     val deliveries by viewModel.deliveries.collectAsStateWithLifecycle()
-    val establishments by viewModel.establishments.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-
-    // Navigation and screen sub-tabs
-    var subTab by remember { mutableIntStateOf(0) } // 0 = Histórico, 1 = Nova Entrega, 2 = Estabelecimentos
-    
-    // Search states
     var searchQuery by remember { mutableStateOf("") }
-    
-    // Delivery Form states
-    var estName by remember { mutableStateOf("") }
-    var neighborhood by remember { mutableStateOf("") }
-    var city by remember { mutableStateOf("São Paulo") }
-    var valueStr by remember { mutableStateOf("") }
-    var paymentMethod by remember { mutableStateOf("Pix") }
-    var distanceStr by remember { mutableStateOf("") }
-    var clientName by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
 
     val filteredDeliveries = remember(deliveries, searchQuery) {
         if (searchQuery.isEmpty()) {
@@ -597,166 +938,38 @@ fun DeliveriesScreen(viewModel: MainViewModel) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = subTab) {
-            Tab(selected = subTab == 0, onClick = { subTab = 0 }, text = { Text("Histórico") })
-            Tab(selected = subTab == 1, onClick = { subTab = 1 }, text = { Text("Lançar") })
-            Tab(selected = subTab == 2, onClick = { subTab = 2 }, text = { Text("Parceiros") })
-        }
+        // Histórico List with filters
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Filtrar por Estab., Bairro, Cidade, Pagamento...") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
 
-        when (subTab) {
-            0 -> {
-                // Histórico List with filters
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Filtrar por Estab., Bairro, Cidade, Pagamento...") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    if (filteredDeliveries.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Nenhuma entrega cadastrada.", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                            items(filteredDeliveries) { delivery ->
-                                DeliveryItemCard(delivery, onDelete = { viewModel.deleteDelivery(delivery) })
-                            }
-                        }
-                    }
+            if (filteredDeliveries.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Nenhuma entrega cadastrada.", style = MaterialTheme.typography.bodyMedium)
                 }
-            }
-            1 -> {
-                // Form Cadastro Entrega
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Lançar Nova Entrega", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-                    OutlinedTextField(
-                        value = estName,
-                        onValueChange = { estName = it },
-                        label = { Text("Nome do Estabelecimento *") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = clientName,
-                        onValueChange = { clientName = it },
-                        label = { Text("Cliente (opcional)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = neighborhood,
-                        onValueChange = { neighborhood = it },
-                        label = { Text("Bairro Destino *") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = city,
-                        onValueChange = { city = it },
-                        label = { Text("Cidade *") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = valueStr,
-                            onValueChange = { valueStr = it },
-                            label = { Text("Valor (R$) *") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = distanceStr,
-                            onValueChange = { distanceStr = it },
-                            label = { Text("Distância (km) *") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                    items(filteredDeliveries) { delivery ->
+                        DeliveryItemCard(
+                            delivery = delivery,
+                            onEdit = { onEditDelivery(delivery) },
+                            onDelete = { viewModel.deleteDelivery(delivery) }
                         )
                     }
-
-                    // Payment method dropdown selection
-                    Column {
-                        Text("Forma de Pagamento", style = MaterialTheme.typography.labelMedium)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            val methods = listOf("Pix", "Dinheiro", "Cartão", "Outro")
-                            methods.forEach { method ->
-                                FilterChip(
-                                    selected = paymentMethod == method,
-                                    onClick = { paymentMethod = method },
-                                    label = { Text(method) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = notes,
-                        onValueChange = { notes = it },
-                        label = { Text("Observações") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2
-                    )
-
-                    Button(
-                        onClick = {
-                            val value = valueStr.replace(',', '.').toDoubleOrNull()
-                            val distance = distanceStr.replace(',', '.').toDoubleOrNull()
-                            if (estName.isNotEmpty() && neighborhood.isNotEmpty() && value != null && distance != null) {
-                                viewModel.insertDelivery(
-                                    establishmentName = estName,
-                                    neighborhood = neighborhood,
-                                    city = city,
-                                    value = value,
-                                    paymentMethod = paymentMethod,
-                                    distanceKm = distance,
-                                    clientName = clientName.ifEmpty { null },
-                                    notes = notes
-                                )
-                                Toast.makeText(context, "Entrega registrada com sucesso!", Toast.LENGTH_SHORT).show()
-                                // Clear form
-                                estName = ""
-                                neighborhood = ""
-                                valueStr = ""
-                                distanceStr = ""
-                                clientName = ""
-                                notes = ""
-                                subTab = 0
-                            } else {
-                                Toast.makeText(context, "Preencha todos os campos obrigatórios (*)", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Salvar Entrega")
-                    }
                 }
-            }
-            2 -> {
-                // Estabelecimentos (Parceiros e Ranking)
-                EstablishmentsScreen(viewModel)
             }
         }
     }
 }
 
 @Composable
-fun DeliveryItemCard(delivery: Delivery, onDelete: () -> Unit) {
+fun DeliveryItemCard(delivery: Delivery, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -794,6 +1007,9 @@ fun DeliveryItemCard(delivery: Delivery, onDelete: () -> Unit) {
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Editar", tint = MaterialTheme.colorScheme.primary)
+                }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Filled.Delete, contentDescription = "Deletar", tint = MaterialTheme.colorScheme.error)
                 }
@@ -808,9 +1024,12 @@ fun DeliveryItemCard(delivery: Delivery, onDelete: () -> Unit) {
 @Composable
 fun EstablishmentsScreen(viewModel: MainViewModel) {
     val estStats by viewModel.establishmentStatsList.collectAsStateWithLifecycle()
+    val establishments by viewModel.establishments.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
     var showAddDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editingEstId by remember { mutableIntStateOf(0) }
     
     // Form States
     var name by remember { mutableStateOf("") }
@@ -866,9 +1085,51 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
             items(estStats) { item ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(item.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                            Text("R$ %.2f".format(item.totalEarnings), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(), 
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                Text("R$ %.2f".format(item.totalEarnings), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                            Row {
+                                val originalEst = establishments.find { it.id == item.id }
+                                if (originalEst != null) {
+                                    IconButton(
+                                        onClick = {
+                                            editingEstId = originalEst.id
+                                            name = originalEst.name
+                                            address = originalEst.address
+                                            neighborhood = originalEst.neighborhood
+                                            city = originalEst.city
+                                            phone = originalEst.phone
+                                            contact = originalEst.contact
+                                            notes = originalEst.notes
+                                            showEditDialog = true
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = "Editar",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.deleteEstablishment(originalEst)
+                                            Toast.makeText(context, "Estabelecimento excluído!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = "Excluir",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Text("Total entregas: ${item.deliveriesCount}", style = MaterialTheme.typography.bodySmall)
                         Text("Última entrega: ${item.lastDelivery}", style = MaterialTheme.typography.bodySmall)
@@ -928,6 +1189,63 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
             }
         )
     }
+
+    if (showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Editar Estabelecimento") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nome do local *") })
+                    OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Endereço") })
+                    OutlinedTextField(value = neighborhood, onValueChange = { neighborhood = it }, label = { Text("Bairro") })
+                    OutlinedTextField(value = city, onValueChange = { city = it }, label = { Text("Cidade") })
+                    OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Telefone") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                    OutlinedTextField(value = contact, onValueChange = { contact = it }, label = { Text("Pessoa de Contato") })
+                    OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Observações") })
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (name.isNotEmpty()) {
+                            viewModel.updateEstablishment(editingEstId, name, address, neighborhood, city, phone, contact, notes)
+                            Toast.makeText(context, "Estabelecimento atualizado!", Toast.LENGTH_SHORT).show()
+                            showEditDialog = false
+                            // Reset
+                            name = ""
+                            address = ""
+                            neighborhood = ""
+                            phone = ""
+                            contact = ""
+                            notes = ""
+                        } else {
+                            Toast.makeText(context, "Nome é obrigatório", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showEditDialog = false 
+                    // Reset
+                    name = ""
+                    address = ""
+                    neighborhood = ""
+                    phone = ""
+                    contact = ""
+                    notes = ""
+                }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
 
 // =====================================================
@@ -935,6 +1253,13 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
 // =====================================================
 @Composable
 fun FuelScreen(viewModel: MainViewModel) {
+    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        FuelScreenContent(viewModel)
+    }
+}
+
+@Composable
+fun FuelScreenContent(viewModel: MainViewModel) {
     val fuelLogs by viewModel.fuelLogs.collectAsStateWithLifecycle()
     val stats by viewModel.fuelStats.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -947,8 +1272,7 @@ fun FuelScreen(viewModel: MainViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("Controle de Combustível", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -1064,10 +1388,47 @@ fun FuelScreen(viewModel: MainViewModel) {
 }
 
 // =====================================================
-// TELA 4: CONTROLE DE DESPESAS
+// TELA 4: CONTROLE DE DESPESAS (Com aba Combustível)
 // =====================================================
 @Composable
 fun ExpensesScreen(viewModel: MainViewModel) {
+    var selectedTab by remember { mutableStateOf(0) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary
+        ) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("Geral") },
+                icon = { Icon(Icons.Filled.ReceiptLong, contentDescription = null) }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("Combustível") },
+                icon = { Icon(Icons.Filled.LocalGasStation, contentDescription = null) }
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            when (selectedTab) {
+                0 -> GeneralExpensesScreenContent(viewModel)
+                1 -> FuelScreenContent(viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun GeneralExpensesScreenContent(viewModel: MainViewModel) {
     val expenses by viewModel.expenses.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -1085,8 +1446,7 @@ fun ExpensesScreen(viewModel: MainViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
@@ -1600,7 +1960,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
                 Text("Selecione um formato para exportar seus relatórios de finanças offline.", style = MaterialTheme.typography.bodySmall)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { Toast.makeText(context, "Planilha Excel criada e salva localmente!", Toast.LENGTH_SHORT).show() },
+                        onClick = { exportDeliveriesToCsv(context, deliveries) },
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Filled.FileDownload, contentDescription = null)
@@ -1608,7 +1968,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
                         Text("Excel")
                     }
                     Button(
-                        onClick = { Toast.makeText(context, "Relatório em PDF gerado na pasta Downloads!", Toast.LENGTH_SHORT).show() },
+                        onClick = { exportDeliveriesToPdf(context, deliveries) },
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
@@ -1700,7 +2060,7 @@ fun PartnerReportScreen(viewModel: MainViewModel) {
         }
 
         Button(
-            onClick = { Toast.makeText(context, "PDF profissional exportado para Downloads!", Toast.LENGTH_SHORT).show() },
+            onClick = { exportEstablishmentReportToPdf(context, selectedEst, estStats) },
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
@@ -1809,5 +2169,290 @@ fun SettingsScreen(viewModel: MainViewModel) {
         ) {
             Text("Salvar Perfil")
         }
+    }
+}
+
+// =====================================================
+// EXPORT HELPERS (PDF / CSV)
+// =====================================================
+fun saveFileToDownloads(
+    context: android.content.Context,
+    fileName: String,
+    mimeType: String,
+    writeBlock: (OutputStream) -> Unit
+): Uri? {
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { outputStream ->
+                    writeBlock(outputStream)
+                }
+            }
+            uri
+        } else {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { outputStream ->
+                writeBlock(outputStream)
+            }
+            Uri.fromFile(file)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+fun exportDeliveriesToCsv(context: android.content.Context, deliveries: List<Delivery>) {
+    val fileName = "motobox_entregas_${System.currentTimeMillis()}.csv"
+    val resultUri = saveFileToDownloads(context, fileName, "text/csv") { outputStream ->
+        outputStream.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+        val writer = outputStream.bufferedWriter(Charsets.UTF_8)
+        writer.write("ID;Data;Hora;Estabelecimento;Cliente;Bairro;Cidade;Valor;Forma Pagamento;Distancia (km);Tempo (min);Notas;Quantidade;Taxa\n")
+        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        deliveries.forEach { d ->
+            val dateStr = sdf.format(Date(d.date))
+            val client = d.clientName ?: ""
+            val time = d.time
+            val est = d.establishmentName
+            val neighborhood = d.neighborhood
+            val city = d.city
+            val value = "%.2f".format(d.value).replace(".", ",")
+            val pay = d.paymentMethod
+            val dist = "%.1f".format(d.distanceKm).replace(".", ",")
+            val duration = d.deliveryTimeMinutes?.toString() ?: ""
+            val notes = d.notes.replace("\n", " ").replace(";", ",")
+            val qty = d.quantity
+            val fee = "%.2f".format(d.feePerDelivery).replace(".", ",")
+            writer.write("${d.id};$dateStr;$time;$est;$client;$neighborhood;$city;$value;$pay;$dist;$duration;$notes;$qty;$fee\n")
+        }
+        writer.flush()
+    }
+    if (resultUri != null) {
+        Toast.makeText(context, "Planilha Excel criada e salva nos Downloads!", Toast.LENGTH_LONG).show()
+    } else {
+        Toast.makeText(context, "Falha ao exportar planilha Excel.", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun exportDeliveriesToPdf(context: android.content.Context, deliveries: List<Delivery>) {
+    val fileName = "motobox_relatorio_geral_${System.currentTimeMillis()}.pdf"
+    val resultUri = saveFileToDownloads(context, fileName, "application/pdf") { outputStream ->
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+        
+        val textPaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 12f
+            isAntiAlias = true
+        }
+        
+        val titlePaint = Paint().apply {
+            color = AndroidColor.parseColor("#aa00fa")
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        
+        val headerPaint = Paint().apply {
+            color = AndroidColor.DKGRAY
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        
+        val valuePaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 10f
+            isAntiAlias = true
+        }
+        
+        val linePaint = Paint().apply {
+            color = AndroidColor.LTGRAY
+            strokeWidth = 1f
+        }
+        
+        var y = 50f
+        canvas.drawText("MOTOBOX FINANCE", 40f, y, titlePaint)
+        y += 25f
+        
+        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+        canvas.drawText("Relatório Geral de Entregas - Gerado em ${sdf.format(Date())}", 40f, y, textPaint.apply { textSize = 10f })
+        y += 30f
+        
+        val totalDeliveries = deliveries.size
+        val totalEarnings = deliveries.sumOf { it.value }
+        val totalDistance = deliveries.sumOf { it.distanceKm }
+        
+        canvas.drawRect(40f, y, 555f, y + 50f, Paint().apply { color = AndroidColor.parseColor("#F3E5F5") })
+        canvas.drawText("Total de Entregas: $totalDeliveries", 50f, y + 20f, textPaint.apply { typeface = Typeface.DEFAULT_BOLD; textSize = 11f; color = AndroidColor.parseColor("#aa00fa") })
+        canvas.drawText("Total Recebido: R$ %.2f".format(totalEarnings), 220f, y + 20f, textPaint)
+        canvas.drawText("Distância: %.1f km".format(totalDistance), 420f, y + 20f, textPaint)
+        y += 70f
+        
+        canvas.drawText("Data", 40f, y, headerPaint)
+        canvas.drawText("Estabelecimento", 110f, y, headerPaint)
+        canvas.drawText("Bairro", 260f, y, headerPaint)
+        canvas.drawText("Forma Pag.", 380f, y, headerPaint)
+        canvas.drawText("Dist (km)", 460f, y, headerPaint)
+        canvas.drawText("Valor", 510f, y, headerPaint)
+        
+        y += 10f
+        canvas.drawLine(40f, y, 555f, y, linePaint)
+        y += 15f
+        
+        val rowSdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        
+        deliveries.forEachIndexed { index, d ->
+            if (y > 780f) {
+                pdfDocument.finishPage(page)
+                val newPageInfo = PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create()
+                page = pdfDocument.startPage(newPageInfo)
+                canvas = page.canvas
+                y = 50f
+                
+                canvas.drawText("Data", 40f, y, headerPaint)
+                canvas.drawText("Estabelecimento", 110f, y, headerPaint)
+                canvas.drawText("Bairro", 260f, y, headerPaint)
+                canvas.drawText("Forma Pag.", 380f, y, headerPaint)
+                canvas.drawText("Dist (km)", 460f, y, headerPaint)
+                canvas.drawText("Valor", 510f, y, headerPaint)
+                y += 10f
+                canvas.drawLine(40f, y, 555f, y, linePaint)
+                y += 15f
+            }
+            
+            val dateStr = rowSdf.format(Date(d.date))
+            canvas.drawText(dateStr, 40f, y, valuePaint)
+            
+            val estTrunc = if (d.establishmentName.length > 22) d.establishmentName.take(20) + ".." else d.establishmentName
+            canvas.drawText(estTrunc, 110f, y, valuePaint)
+            
+            val neighborhoodTrunc = if (d.neighborhood.length > 18) d.neighborhood.take(16) + ".." else d.neighborhood
+            canvas.drawText(neighborhoodTrunc, 260f, y, valuePaint)
+            
+            canvas.drawText(d.paymentMethod, 380f, y, valuePaint)
+            canvas.drawText("%.1f".format(d.distanceKm), 460f, y, valuePaint)
+            canvas.drawText("R$ %.2f".format(d.value), 510f, y, valuePaint)
+            
+            y += 8f
+            canvas.drawLine(40f, y, 555f, y, Paint().apply { color = AndroidColor.parseColor("#EEEEEE"); strokeWidth = 0.5f })
+            y += 12f
+        }
+        
+        pdfDocument.finishPage(page)
+        pdfDocument.writeTo(outputStream)
+        pdfDocument.close()
+    }
+    if (resultUri != null) {
+        Toast.makeText(context, "Relatório em PDF gerado nos Downloads!", Toast.LENGTH_LONG).show()
+    } else {
+        Toast.makeText(context, "Falha ao exportar relatório PDF.", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun exportEstablishmentReportToPdf(
+    context: android.content.Context,
+    selectedEst: String,
+    estStats: List<com.example.ui.EstablishmentStats>
+) {
+    val fileName = "motobox_relatorio_parceiro_${System.currentTimeMillis()}.pdf"
+    val resultUri = saveFileToDownloads(context, fileName, "application/pdf") { outputStream ->
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+        
+        val titlePaint = Paint().apply {
+            color = AndroidColor.parseColor("#aa00fa")
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val headerPaint = Paint().apply {
+            color = AndroidColor.DKGRAY
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val textPaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 10f
+            isAntiAlias = true
+        }
+        val linePaint = Paint().apply {
+            color = AndroidColor.LTGRAY
+            strokeWidth = 1f
+        }
+        
+        var y = 50f
+        canvas.drawText("MOTOBOX FINANCE", 40f, y, titlePaint)
+        y += 25f
+        
+        canvas.drawText("Relatório de Entregas por Estabelecimento", 40f, y, textPaint.apply { textSize = 11f; typeface = Typeface.DEFAULT_BOLD })
+        y += 15f
+        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+        canvas.drawText("Emissão: ${sdf.format(Date())}", 40f, y, textPaint.apply { textSize = 9f; typeface = Typeface.DEFAULT })
+        y += 30f
+        
+        canvas.drawLine(40f, y, 555f, y, linePaint)
+        y += 20f
+        
+        if (selectedEst == "Todos") {
+            canvas.drawText("Resumo de Todos os Estabelecimentos", 40f, y, headerPaint)
+            y += 25f
+            
+            estStats.forEach { item ->
+                canvas.drawText(item.name, 40f, y, textPaint)
+                canvas.drawText("${item.deliveriesCount} entregas | R$ %.2f".format(item.totalEarnings), 350f, y, textPaint)
+                y += 20f
+                canvas.drawLine(40f, y, 555f, y, Paint().apply { color = AndroidColor.parseColor("#EEEEEE") })
+                y += 5f
+            }
+        } else {
+            val est = estStats.find { it.name == selectedEst }
+            if (est != null) {
+                canvas.drawText("Estabelecimento: ${est.name}", 40f, y, headerPaint)
+                y += 25f
+                canvas.drawText("Quantidade total de entregas: ${est.deliveriesCount}", 40f, y, textPaint)
+                y += 20f
+                canvas.drawText("Valor total recebido: R$ %.2f".format(est.totalEarnings), 40f, y, textPaint)
+                y += 20f
+                canvas.drawText("Última entrega cadastrada: ${est.lastDelivery}", 40f, y, textPaint)
+                y += 25f
+            }
+        }
+        
+        y += 10f
+        canvas.drawLine(40f, y, 555f, y, linePaint)
+        y += 20f
+        
+        val totalEnt = if (selectedEst == "Todos") estStats.sumOf { it.deliveriesCount } else estStats.find { it.name == selectedEst }?.deliveriesCount ?: 0
+        val totalRec = if (selectedEst == "Todos") estStats.sumOf { it.totalEarnings } else estStats.find { it.name == selectedEst }?.totalEarnings ?: 0.0
+        
+        canvas.drawText("TOTAL DE ENTREGAS: $totalEnt", 40f, y, headerPaint)
+        y += 20f
+        canvas.drawText("TOTAL RECEBIDO: R$ %.2f".format(totalRec), 40f, y, headerPaint.apply { color = AndroidColor.parseColor("#aa00fa") })
+        
+        pdfDocument.finishPage(page)
+        pdfDocument.writeTo(outputStream)
+        pdfDocument.close()
+    }
+    if (resultUri != null) {
+        Toast.makeText(context, "PDF do parceiro exportado para Downloads!", Toast.LENGTH_LONG).show()
+    } else {
+        Toast.makeText(context, "Falha ao gerar PDF do parceiro.", Toast.LENGTH_SHORT).show()
     }
 }
