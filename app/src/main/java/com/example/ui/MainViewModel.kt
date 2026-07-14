@@ -22,7 +22,8 @@ enum class Screen {
     FechamentoCaixa,
     Relatorios,
     RelatorioEstabelecimento,
-    Configuracoes
+    Configuracoes,
+    ExportarRelatorio
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -33,6 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Current screen navigation state
     private val _currentScreen = MutableStateFlow(Screen.Dashboard)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
+    private val screenHistory = mutableListOf<Screen>()
 
     // Flows from database
     val deliveries = repository.allDeliveries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -55,6 +57,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _useAutoTheme = MutableStateFlow(sharedPrefs.getBoolean("use_auto_theme", false))
     val useAutoTheme: StateFlow<Boolean> = _useAutoTheme.asStateFlow()
 
+    private val _motoboyPhotoUri = MutableStateFlow(sharedPrefs.getString("motoboy_photo_uri", "") ?: "")
+    val motoboyPhotoUri: StateFlow<String> = _motoboyPhotoUri.asStateFlow()
+
     // Voice Command State
     private val _voiceProcessing = MutableStateFlow(false)
     val voiceProcessing: StateFlow<Boolean> = _voiceProcessing.asStateFlow()
@@ -74,21 +79,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(screen: Screen) {
-        _currentScreen.value = screen
+        if (_currentScreen.value != screen) {
+            screenHistory.add(_currentScreen.value)
+            _currentScreen.value = screen
+        }
+    }
+
+    fun navigateBack(): Boolean {
+        if (screenHistory.isNotEmpty()) {
+            _currentScreen.value = screenHistory.removeAt(screenHistory.lastIndex)
+            return true
+        }
+        return false
+    }
+
+    fun canNavigateBack(): Boolean {
+        return screenHistory.isNotEmpty()
     }
 
     // Settings Updates
-    fun updateSettings(name: String, phone: String, darkTheme: Boolean, autoTheme: Boolean) {
+    fun updateSettings(name: String, phone: String, darkTheme: Boolean, autoTheme: Boolean, photoUri: String = _motoboyPhotoUri.value) {
         _motoboyName.value = name
         _motoboyPhone.value = phone
         _isDarkTheme.value = darkTheme
         _useAutoTheme.value = autoTheme
+        _motoboyPhotoUri.value = photoUri
 
         sharedPrefs.edit().apply {
             putString("motoboy_name", name)
             putString("motoboy_phone", phone)
             putBoolean("is_dark_theme", darkTheme)
             putBoolean("use_auto_theme", autoTheme)
+            putString("motoboy_photo_uri", photoUri)
             apply()
         }
     }
@@ -105,7 +127,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         notes: String,
         deliveryTimeMinutes: Int? = null,
         quantity: Int = 1,
-        feePerDelivery: Double = 0.0
+        feePerDelivery: Double = 0.0,
+        feeFartherDeliveries: Double = 0.0
     ) {
         viewModelScope.launch {
             // Find establishment by name or create a new one
@@ -137,7 +160,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 deliveryTimeMinutes = deliveryTimeMinutes,
                 notes = notes,
                 quantity = quantity,
-                feePerDelivery = feePerDelivery
+                feePerDelivery = feePerDelivery,
+                feeFartherDeliveries = feeFartherDeliveries
             )
             repository.insertDelivery(delivery)
         }
@@ -157,7 +181,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         notes: String,
         deliveryTimeMinutes: Int? = null,
         quantity: Int = 1,
-        feePerDelivery: Double = 0.0
+        feePerDelivery: Double = 0.0,
+        feeFartherDeliveries: Double = 0.0
     ) {
         viewModelScope.launch {
             val allEst = repository.allEstablishments.first()
@@ -188,7 +213,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 deliveryTimeMinutes = deliveryTimeMinutes,
                 notes = notes,
                 quantity = quantity,
-                feePerDelivery = feePerDelivery
+                feePerDelivery = feePerDelivery,
+                feeFartherDeliveries = feeFartherDeliveries
             )
             repository.insertDelivery(delivery)
         }
@@ -255,6 +281,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 value = value,
                 notes = notes
             )
+            repository.insertExpense(expense)
+        }
+    }
+
+    fun updateExpense(expense: Expense) {
+        viewModelScope.launch {
             repository.insertExpense(expense)
         }
     }

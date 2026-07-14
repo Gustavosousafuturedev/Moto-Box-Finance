@@ -19,7 +19,8 @@ data class Delivery(
     val deliveryTimeMinutes: Int? = null,
     val notes: String = "",
     val quantity: Int = 1,
-    val feePerDelivery: Double = 0.0
+    val feePerDelivery: Double = 0.0,
+    val feeFartherDeliveries: Double = 0.0
 )
 
 @Entity(tableName = "establishments")

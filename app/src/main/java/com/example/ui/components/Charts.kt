@@ -105,12 +105,14 @@ fun PieChart(
     data: List<Pair<String, Float>>,
     modifier: Modifier = Modifier,
     colors: List<Color> = listOf(
-        Color(0xFFaa00fa), // Purple
-        Color(0xFFFFD600), // Yellow
-        Color(0xFF7B1FA2), // Dark Purple
-        Color(0xFFFFEA00), // Bright Yellow
-        Color(0xFFE040FB), // Magenta Purple
-        Color(0xFFFF5722)  // Vibrant Orange
+        Color(0xFF2196F3), // Ocean Blue
+        Color(0xFF4CAF50), // Emerald Green
+        Color(0xFFE91E63), // Coral Pink/Red
+        Color(0xFFFFC107), // Warm Amber
+        Color(0xFF00BCD4), // Electric Cyan
+        Color(0xFF9C27B0), // Deep Purple
+        Color(0xFFFF5722), // Vibrant Orange
+        Color(0xFF8BC34A)  // Lime Green
     )
 ) {
     val total = data.sumOf { it.second.toDouble() }.toFloat()
