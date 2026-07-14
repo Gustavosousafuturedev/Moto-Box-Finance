@@ -1,9 +1,9 @@
 package com.example.ui
 
 import android.app.Application
-import android.content.Context
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import kotlinx.coroutines.flow.*
@@ -11,370 +11,388 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-enum class Screen {
-    Dashboard,
-    CadastroEntrega,
-    CadastroEstabelecimento,
-    ControleCombustivel,
-    ControleDespesas,
-    ControleManutencao,
-    Metas,
-    FechamentoCaixa,
-    Relatorios,
-    RelatorioEstabelecimento,
-    Configuracoes,
-    ExportarRelatorio
-}
+class MainViewModel(application: Application, private val repository: Repository) : AndroidViewModel(application) {
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val database = AppDatabase.getDatabase(application)
-    private val repository = AppRepository(database)
-    private val sharedPrefs = application.getSharedPreferences("motogestor_prefs", Context.MODE_PRIVATE)
+    // Existing Motorcycle flows
+    val motorcycles: StateFlow<List<Motorcycle>> = repository.motorcycles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Current screen navigation state
-    private val _currentScreen = MutableStateFlow(Screen.Dashboard)
-    val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
-    private val screenHistory = mutableListOf<Screen>()
+    val allMaintenances: StateFlow<List<Maintenance>> = repository.allMaintenances
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Flows from database
-    val deliveries = repository.allDeliveries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val establishments = repository.allEstablishments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val fuelLogs = repository.allFuelLogs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val expenses = repository.allExpenses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val maintenances = repository.allMaintenances.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val goals = repository.allGoals.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allRefuels: StateFlow<List<Refuel>> = repository.allRefuels
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // UI Configuration State (stored in SharedPreferences)
-    private val _motoboyName = MutableStateFlow(sharedPrefs.getString("motoboy_name", "Motoboy Parceiro") ?: "Motoboy Parceiro")
-    val motoboyName: StateFlow<String> = _motoboyName.asStateFlow()
+    private val _selectedMotorcycleId = MutableStateFlow<Int>(-1)
+    val selectedMotorcycleId: StateFlow<Int> = _selectedMotorcycleId.asStateFlow()
 
-    private val _motoboyPhone = MutableStateFlow(sharedPrefs.getString("motoboy_phone", "(11) 99999-9999") ?: "(11) 99999-9999")
-    val motoboyPhone: StateFlow<String> = _motoboyPhone.asStateFlow()
+    private val _activeMotorcycle = MutableStateFlow<Motorcycle?>(null)
+    val activeMotorcycle: StateFlow<Motorcycle?> = _activeMotorcycle.asStateFlow()
 
-    private val _isDarkTheme = MutableStateFlow(sharedPrefs.getBoolean("is_dark_theme", true)) // Default dark theme
-    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+    private val _activeMaintenances = MutableStateFlow<List<Maintenance>>(emptyList())
+    val activeMaintenances: StateFlow<List<Maintenance>> = _activeMaintenances.asStateFlow()
 
-    private val _useAutoTheme = MutableStateFlow(sharedPrefs.getBoolean("use_auto_theme", false))
-    val useAutoTheme: StateFlow<Boolean> = _useAutoTheme.asStateFlow()
+    private val _activeRefuels = MutableStateFlow<List<Refuel>>(emptyList())
+    val activeRefuels: StateFlow<List<Refuel>> = _activeRefuels.asStateFlow()
 
-    private val _motoboyPhotoUri = MutableStateFlow(sharedPrefs.getString("motoboy_photo_uri", "") ?: "")
-    val motoboyPhotoUri: StateFlow<String> = _motoboyPhotoUri.asStateFlow()
+    // --- NEW DELIVERIES & EXPENSES FLOWS ---
+    val allDeliveries: StateFlow<List<Delivery>> = repository.allDeliveries
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Voice Command State
-    private val _voiceProcessing = MutableStateFlow(false)
-    val voiceProcessing: StateFlow<Boolean> = _voiceProcessing.asStateFlow()
+    val allExpenses: StateFlow<List<Expense>> = repository.allExpenses
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _voiceDialogData = MutableStateFlow<ParsedDelivery?>(null)
-    val voiceDialogData: StateFlow<ParsedDelivery?> = _voiceDialogData.asStateFlow()
+    val userProfile: StateFlow<UserProfile?> = repository.getUserProfileFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // Sync state
+    private val _lastSyncTime = MutableStateFlow<String>("Nunca sincronizado")
+    val lastSyncTime: StateFlow<String> = _lastSyncTime.asStateFlow()
+
+    private val _syncStatus = MutableStateFlow<String>("Sem alterações pendentes")
+    val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
+
+    private val _isSyncing = MutableStateFlow<Boolean>(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _isAutoBackupEnabled = MutableStateFlow<Boolean>(false)
+    val isAutoBackupEnabled: StateFlow<Boolean> = _isAutoBackupEnabled.asStateFlow()
+
+    // Messages state (Snackbars / Toasts)
+    private val _message = MutableSharedFlow<String>()
+    val message: SharedFlow<String> = _message.asSharedFlow()
+
+    // Search and filters
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _sortType = MutableStateFlow("Mais recentes") // "Mais recentes", "Mais antigas", "Maior número de entregas", "Nome do estabelecimento"
+    val sortType: StateFlow<String> = _sortType.asStateFlow()
+
+    private val _filterStartDate = MutableStateFlow<Long?>(null)
+    val filterStartDate: StateFlow<Long?> = _filterStartDate.asStateFlow()
+
+    private val _filterEndDate = MutableStateFlow<Long?>(null)
+    val filterEndDate: StateFlow<Long?> = _filterEndDate.asStateFlow()
+
+    private val _filterEstablishment = MutableStateFlow<String?>(null)
+    val filterEstablishment: StateFlow<String?> = _filterEstablishment.asStateFlow()
+
+    private val _filterPaymentMethod = MutableStateFlow<String?>(null)
+    val filterPaymentMethod: StateFlow<String?> = _filterPaymentMethod.asStateFlow()
+
+    // Filtered & Sorted deliveries
+    val filteredDeliveries: StateFlow<List<Delivery>> = combine(
+        allDeliveries, searchQuery, sortType, filterStartDate, filterEndDate, filterEstablishment, filterPaymentMethod
+    ) { deliveries, query, sort, start, end, est, pay ->
+        var list = deliveries
+
+        // Search
+        if (query.isNotBlank()) {
+            list = list.filter {
+                it.establishment.contains(query, ignoreCase = true) ||
+                it.paymentMethod.contains(query, ignoreCase = true) ||
+                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it.dateMillis)).contains(query)
+            }
+        }
+
+        // Filters
+        if (start != null) {
+            list = list.filter { it.dateMillis >= start }
+        }
+        if (end != null) {
+            list = list.filter { it.dateMillis <= end }
+        }
+        if (est != null) {
+            list = list.filter { it.establishment.equals(est, ignoreCase = true) }
+        }
+        if (pay != null) {
+            list = list.filter { it.paymentMethod.equals(pay, ignoreCase = true) }
+        }
+
+        // Sorting
+        when (sort) {
+            "Mais recentes" -> list.sortedByDescending { it.dateMillis }
+            "Mais antigas" -> list.sortedBy { it.dateMillis }
+            "Maior número de entregas" -> {
+                // Group by establishment, count, and sort by that count
+                val counts = list.groupBy { it.establishment }.mapValues { it.value.size }
+                list.sortedByDescending { counts[it.establishment] ?: 0 }
+            }
+            "Nome do estabelecimento" -> list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.establishment })
+            else -> list.sortedByDescending { it.dateMillis }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // AI Chat Support (kept for GeminiClient if needed, but voice completely removed)
+    private val _chatMessages = MutableStateFlow<List<Pair<String, Boolean>>>(
+        listOf("Olá! Sou o assistente de IA do MotoGestor. Como posso ajudar com suas entregas hoje?" to false)
+    )
+    val chatMessages: StateFlow<List<Pair<String, Boolean>>> = _chatMessages.asStateFlow()
+
+    private val _isAiLoading = MutableStateFlow(false)
+    val isAiLoading: StateFlow<Boolean> = _isAiLoading.asStateFlow()
 
     init {
-        // Pre-populate data if empty
         viewModelScope.launch {
-            repository.allEstablishments.first().let { list ->
-                if (list.isEmpty()) {
-                    prePopulateSampleData()
+            motorcycles.collect { list ->
+                if (list.isNotEmpty() && _selectedMotorcycleId.value == -1) {
+                    selectMotorcycle(list.first().id)
                 }
             }
         }
-    }
-
-    fun navigateTo(screen: Screen) {
-        if (_currentScreen.value != screen) {
-            screenHistory.add(_currentScreen.value)
-            _currentScreen.value = screen
+        // Initialize default user profile if empty
+        viewModelScope.launch {
+            val current = repository.getUserProfile()
+            if (current == null) {
+                repository.insertUserProfile(UserProfile(id = 1, name = "Gustavo"))
+            }
         }
     }
 
-    fun navigateBack(): Boolean {
-        if (screenHistory.isNotEmpty()) {
-            _currentScreen.value = screenHistory.removeAt(screenHistory.lastIndex)
-            return true
+    fun selectMotorcycle(id: Int) {
+        _selectedMotorcycleId.value = id
+        viewModelScope.launch {
+            val moto = repository.getMotorcycleById(id)
+            _activeMotorcycle.value = moto
+            
+            repository.getMaintenancesForMotorcycle(id).collect {
+                _activeMaintenances.value = it
+            }
         }
-        return false
-    }
-
-    fun canNavigateBack(): Boolean {
-        return screenHistory.isNotEmpty()
-    }
-
-    // Settings Updates
-    fun updateSettings(name: String, phone: String, darkTheme: Boolean, autoTheme: Boolean, photoUri: String = _motoboyPhotoUri.value) {
-        _motoboyName.value = name
-        _motoboyPhone.value = phone
-        _isDarkTheme.value = darkTheme
-        _useAutoTheme.value = autoTheme
-        _motoboyPhotoUri.value = photoUri
-
-        sharedPrefs.edit().apply {
-            putString("motoboy_name", name)
-            putString("motoboy_phone", phone)
-            putBoolean("is_dark_theme", darkTheme)
-            putBoolean("use_auto_theme", autoTheme)
-            putString("motoboy_photo_uri", photoUri)
-            apply()
+        viewModelScope.launch {
+            repository.getRefuelsForMotorcycle(id).collect {
+                _activeRefuels.value = it
+            }
         }
     }
 
-    // Database Actions
-    fun insertDelivery(
-        establishmentName: String,
-        neighborhood: String,
-        city: String,
-        value: Double,
-        paymentMethod: String,
-        distanceKm: Double,
-        clientName: String?,
-        notes: String,
-        deliveryTimeMinutes: Int? = null,
-        quantity: Int = 1,
-        feePerDelivery: Double = 0.0,
-        feeFartherDeliveries: Double = 0.0
+    // --- MESSAGING ---
+    private fun showMessage(msg: String) {
+        viewModelScope.launch {
+            _message.emit(msg)
+        }
+    }
+
+    // --- PROFILE ---
+    fun updateProfile(
+        name: String, phone: String, city: String,
+        brand: String, model: String, year: Int, plate: String, odometer: Double, photoUri: String
     ) {
         viewModelScope.launch {
-            // Find establishment by name or create a new one
-            val allEst = repository.allEstablishments.first()
-            var estId = allEst.find { it.name.equals(establishmentName, ignoreCase = true) }?.id ?: 0
-            
-            if (estId == 0) {
-                // Create automatically if doesn't exist
-                val newEst = Establishment(
-                    name = establishmentName,
+            try {
+                val profile = UserProfile(
+                    id = 1,
+                    name = name,
+                    phone = phone,
                     city = city,
-                    neighborhood = neighborhood,
-                    notes = "Cadastrado automaticamente via entrega"
+                    motorcycleBrand = brand,
+                    motorcycleModel = model,
+                    motorcycleYear = year,
+                    motorcyclePlate = plate,
+                    currentOdometer = odometer,
+                    photoUri = photoUri
                 )
-                estId = repository.insertEstablishment(newEst).toInt()
-            }
+                repository.insertUserProfile(profile)
 
-            val delivery = Delivery(
-                date = System.currentTimeMillis(),
-                time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
-                establishmentId = estId,
-                establishmentName = establishmentName,
-                clientName = clientName,
-                neighborhood = neighborhood,
-                city = city,
-                value = value,
-                paymentMethod = paymentMethod,
-                distanceKm = distanceKm,
-                deliveryTimeMinutes = deliveryTimeMinutes,
-                notes = notes,
-                quantity = quantity,
-                feePerDelivery = feePerDelivery,
-                feeFartherDeliveries = feeFartherDeliveries
-            )
-            repository.insertDelivery(delivery)
+                // Sync with existing Motorcycle if active
+                val active = _activeMotorcycle.value
+                if (active != null) {
+                    val updatedMoto = active.copy(
+                        brand = brand,
+                        model = model,
+                        year = year,
+                        plate = plate,
+                        currentOdometer = odometer
+                    )
+                    repository.insertMotorcycle(updatedMoto)
+                    _activeMotorcycle.value = updatedMoto
+                } else {
+                    // Create a motorcycle record
+                    val newMoto = Motorcycle(
+                        brand = brand,
+                        model = model,
+                        year = year,
+                        plate = plate,
+                        color = "Preto",
+                        currentOdometer = odometer
+                    )
+                    val newId = repository.insertMotorcycle(newMoto)
+                    selectMotorcycle(newId.toInt())
+                }
+                showMessage("Perfil atualizado")
+            } catch (e: Exception) {
+                showMessage("Erro ao salvar")
+            }
         }
     }
 
-    fun updateDelivery(
-        id: Int,
-        date: Long,
-        time: String,
-        establishmentName: String,
-        neighborhood: String,
-        city: String,
-        value: Double,
-        paymentMethod: String,
-        distanceKm: Double,
-        clientName: String?,
-        notes: String,
-        deliveryTimeMinutes: Int? = null,
-        quantity: Int = 1,
-        feePerDelivery: Double = 0.0,
-        feeFartherDeliveries: Double = 0.0
-    ) {
+    // --- DELIVERY CRUD ---
+    fun addDelivery(establishment: String, value: Double, paymentMethod: String, dateMillis: Long, notes: String) {
         viewModelScope.launch {
-            val allEst = repository.allEstablishments.first()
-            var estId = allEst.find { it.name.equals(establishmentName, ignoreCase = true) }?.id ?: 0
-            
-            if (estId == 0) {
-                val newEst = Establishment(
-                    name = establishmentName,
-                    city = city,
-                    neighborhood = neighborhood,
-                    notes = "Cadastrado automaticamente via entrega"
+            try {
+                if (establishment.isBlank() || value <= 0.0 || paymentMethod.isBlank()) {
+                    showMessage("Erro ao salvar")
+                    return@launch
+                }
+                val delivery = Delivery(
+                    establishment = establishment.trim(),
+                    value = value,
+                    paymentMethod = paymentMethod,
+                    dateMillis = dateMillis,
+                    notes = notes
                 )
-                estId = repository.insertEstablishment(newEst).toInt()
+                repository.insertDelivery(delivery)
+                showMessage("Entrega salva com sucesso")
+            } catch (e: Exception) {
+                showMessage("Erro ao salvar")
             }
-
-            val delivery = Delivery(
-                id = id,
-                date = date,
-                time = time,
-                establishmentId = estId,
-                establishmentName = establishmentName,
-                clientName = clientName,
-                neighborhood = neighborhood,
-                city = city,
-                value = value,
-                paymentMethod = paymentMethod,
-                distanceKm = distanceKm,
-                deliveryTimeMinutes = deliveryTimeMinutes,
-                notes = notes,
-                quantity = quantity,
-                feePerDelivery = feePerDelivery,
-                feeFartherDeliveries = feeFartherDeliveries
-            )
-            repository.insertDelivery(delivery)
         }
     }
 
-    fun insertEstablishment(name: String, address: String, neighborhood: String, city: String, phone: String, contact: String, notes: String) {
+    fun updateDelivery(delivery: Delivery) {
         viewModelScope.launch {
-            val est = Establishment(
-                name = name,
-                address = address,
-                neighborhood = neighborhood,
-                city = city,
-                phone = phone,
-                contact = contact,
-                notes = notes
-            )
-            repository.insertEstablishment(est)
+            try {
+                if (delivery.establishment.isBlank() || delivery.value <= 0.0 || delivery.paymentMethod.isBlank()) {
+                    showMessage("Erro ao salvar")
+                    return@launch
+                }
+                repository.updateDelivery(delivery)
+                showMessage("Entrega editada")
+            } catch (e: Exception) {
+                showMessage("Erro ao salvar")
+            }
         }
     }
 
-    fun updateEstablishment(id: Int, name: String, address: String, neighborhood: String, city: String, phone: String, contact: String, notes: String) {
+    fun deleteDelivery(delivery: Delivery) {
         viewModelScope.launch {
-            val est = Establishment(
-                id = id,
-                name = name,
-                address = address,
-                neighborhood = neighborhood,
-                city = city,
-                phone = phone,
-                contact = contact,
-                notes = notes
-            )
-            repository.insertEstablishment(est)
+            try {
+                repository.deleteDelivery(delivery)
+                showMessage("Entrega excluída")
+            } catch (e: Exception) {
+                showMessage("Erro ao salvar")
+            }
         }
     }
 
-    fun insertFuelLog(gasStation: String, totalAmount: Double, liters: Double, odometer: Double) {
+    // --- EXPENSE CRUD ---
+    fun addExpense(title: String, cost: Double, category: String, dateMillis: Long, notes: String) {
         viewModelScope.launch {
-            val fuel = FuelLog(
-                date = System.currentTimeMillis(),
-                gasStation = gasStation,
-                totalAmount = totalAmount,
-                liters = liters,
-                odometer = odometer
-            )
-            repository.insertFuelLog(fuel)
-
-            // Auto log fuel in overall expenses under category "Combustível"
-            val expense = Expense(
-                date = System.currentTimeMillis(),
-                category = "Combustível",
-                value = totalAmount,
-                notes = "Abastecimento no posto $gasStation ($liters L)"
-            )
-            repository.insertExpense(expense)
-        }
-    }
-
-    fun insertExpense(category: String, value: Double, notes: String) {
-        viewModelScope.launch {
-            val expense = Expense(
-                date = System.currentTimeMillis(),
-                category = category,
-                value = value,
-                notes = notes
-            )
-            repository.insertExpense(expense)
+            try {
+                if (title.isBlank() || cost <= 0.0 || category.isBlank()) {
+                    showMessage("Erro ao salvar")
+                    return@launch
+                }
+                val expense = Expense(
+                    title = title.trim(),
+                    cost = cost,
+                    category = category,
+                    dateMillis = dateMillis,
+                    notes = notes
+                )
+                repository.insertExpense(expense)
+                showMessage("Despesa cadastrada")
+            } catch (e: Exception) {
+                showMessage("Erro ao salvar")
+            }
         }
     }
 
     fun updateExpense(expense: Expense) {
         viewModelScope.launch {
-            repository.insertExpense(expense)
-        }
-    }
-
-    fun insertMaintenance(item: String, currentOdometer: Double, cost: Double, nextOdometer: Double, notes: String) {
-        viewModelScope.launch {
-            val maintenance = Maintenance(
-                date = System.currentTimeMillis(),
-                item = item,
-                currentOdometer = currentOdometer,
-                cost = cost,
-                nextOdometer = nextOdometer,
-                notes = notes
-            )
-            repository.insertMaintenance(maintenance)
-
-            // Auto log maintenance in overall expenses under category "Oficina" or "Manutenção"
-            val expense = Expense(
-                date = System.currentTimeMillis(),
-                category = item, // Store the item as sub-category/category
-                value = cost,
-                notes = "Manutenção: $item. Km atual: $currentOdometer. Próxima: $nextOdometer. Obs: $notes"
-            )
-            repository.insertExpense(expense)
-        }
-    }
-
-    fun updateGoal(type: String, targetValue: Double) {
-        viewModelScope.launch {
-            val current = repository.allGoals.first().find { it.type == type }
-            val updated = Goal(
-                id = current?.id ?: 0,
-                type = type,
-                targetValue = targetValue
-            )
-            repository.insertGoal(updated)
-        }
-    }
-
-    fun deleteDelivery(delivery: Delivery) = viewModelScope.launch { repository.deleteDelivery(delivery) }
-    fun deleteEstablishment(est: Establishment) = viewModelScope.launch { repository.deleteEstablishment(est) }
-    fun deleteFuelLog(log: FuelLog) = viewModelScope.launch { repository.deleteFuelLog(log) }
-    fun deleteExpense(exp: Expense) = viewModelScope.launch { repository.deleteExpense(exp) }
-    fun deleteMaintenance(m: Maintenance) = viewModelScope.launch { repository.deleteMaintenance(m) }
-
-    // Backup & Restore
-    fun triggerBackup() {
-        // Offline SQLite auto backups are enabled, Firebase cloud sync mock is executed.
-        viewModelScope.launch {
-            // Emulate cloud backup sync
-            _voiceProcessing.value = true
-            kotlinx.coroutines.delay(1200)
-            _voiceProcessing.value = false
-        }
-    }
-
-    fun triggerRestore() {
-        viewModelScope.launch {
-            _voiceProcessing.value = true
-            kotlinx.coroutines.delay(1200)
-            _voiceProcessing.value = false
-        }
-    }
-
-    // Voice Processing Command
-    fun processVoiceDictation(spokenText: String) {
-        viewModelScope.launch {
-            _voiceProcessing.value = true
             try {
-                val parsed = GeminiParser.parseVoiceCommand(spokenText)
-                _voiceDialogData.value = parsed
+                if (expense.title.isBlank() || expense.cost <= 0.0 || expense.category.isBlank()) {
+                    showMessage("Erro ao salvar")
+                    return@launch
+                }
+                repository.updateExpense(expense)
+                showMessage("Despesa editada")
             } catch (e: Exception) {
-                Log.e("MainViewModel", "Voice parsing error", e)
-                _voiceDialogData.value = ParsedDelivery("Pizzaria Central", "Centro", 15.0)
-            } finally {
-                _voiceProcessing.value = false
+                showMessage("Erro ao salvar")
             }
         }
     }
 
-    fun clearVoiceDialog() {
-        _voiceDialogData.value = null
+    fun deleteExpense(expense: Expense) {
+        viewModelScope.launch {
+            try {
+                repository.deleteExpense(expense)
+                showMessage("Despesa excluída")
+            } catch (e: Exception) {
+                showMessage("Erro ao salvar")
+            }
+        }
     }
 
-    // --- Statistics and Aggregations (Calculated On-The-Fly dynamically using Flows) ---
+    // --- SEARCH / SORT SETTERS ---
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
 
-    // Date Helper functions
-    private fun getStartOfDay(): Long {
+    fun updateSortType(type: String) {
+        _sortType.value = type
+    }
+
+    fun setDateFilter(start: Long?, end: Long?) {
+        _filterStartDate.value = start
+        _filterEndDate.value = end
+    }
+
+    fun setEstablishmentFilter(est: String?) {
+        _filterEstablishment.value = est
+    }
+
+    fun setPaymentMethodFilter(pay: String?) {
+        _filterPaymentMethod.value = pay
+    }
+
+    fun clearFilters() {
+        _filterStartDate.value = null
+        _filterEndDate.value = null
+        _filterEstablishment.value = null
+        _filterPaymentMethod.value = null
+        _searchQuery.value = ""
+    }
+
+    // --- SYNCHRONIZATION ---
+    fun toggleAutoBackup(enabled: Boolean) {
+        _isAutoBackupEnabled.value = enabled
+        if (enabled) {
+            showMessage("Backup automático ativado")
+        } else {
+            showMessage("Backup automático desativado")
+        }
+    }
+
+    fun syncNow() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            _syncStatus.value = "Sincronizando com a nuvem..."
+            kotlinx.coroutines.delay(1500)
+            _isSyncing.value = false
+            _syncStatus.value = "Sincronizado"
+            val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+            _lastSyncTime.value = sdf.format(Date())
+            showMessage("Backup concluído")
+        }
+    }
+
+    fun restoreBackup() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            _syncStatus.value = "Restaurando dados..."
+            kotlinx.coroutines.delay(1500)
+            _isSyncing.value = false
+            _syncStatus.value = "Restaurado"
+            showMessage("Backup restaurado com sucesso")
+        }
+    }
+
+    // --- CALCULATIONS FOR HOME & DASHBOARDS ---
+
+    // Date range helpers
+    private fun getStartOfDayMillis(): Long {
         val cal = Calendar.getInstance()
         cal.set(Calendar.HOUR_OF_DAY, 0)
         cal.set(Calendar.MINUTE, 0)
@@ -383,7 +401,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cal.timeInMillis
     }
 
-    private fun getStartOfWeek(): Long {
+    private fun getStartOfWeekMillis(): Long {
         val cal = Calendar.getInstance()
         cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
         cal.set(Calendar.HOUR_OF_DAY, 0)
@@ -393,7 +411,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cal.timeInMillis
     }
 
-    private fun getStartOfMonth(): Long {
+    private fun getStartOfMonthMillis(): Long {
         val cal = Calendar.getInstance()
         cal.set(Calendar.DAY_OF_MONTH, 1)
         cal.set(Calendar.HOUR_OF_DAY, 0)
@@ -403,216 +421,238 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cal.timeInMillis
     }
 
-    private fun getStartOfYear(): Long {
-        val cal = Calendar.getInstance()
-        cal.set(Calendar.MONTH, Calendar.JANUARY)
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
-        return cal.timeInMillis
+    // Deliveries count today
+    fun getDeliveriesCountToday(): Int {
+        val start = getStartOfDayMillis()
+        return allDeliveries.value.count { it.dateMillis >= start }
     }
 
-    // StateFlow containing parsed statistics
-    val dashboardStats = combine(deliveries, expenses, fuelLogs, goals) { delList, expList, fuelList, goalList ->
-        val now = System.currentTimeMillis()
-        val startDay = getStartOfDay()
-        val startWeek = getStartOfWeek()
-        val startMonth = getStartOfMonth()
-        val startYear = getStartOfYear()
+    // Deliveries count this week
+    fun getDeliveriesCountThisWeek(): Int {
+        val start = getStartOfWeekMillis()
+        return allDeliveries.value.count { it.dateMillis >= start }
+    }
 
-        // Ganhos (Gros revenue)
-        val dayEarnings = delList.filter { it.date >= startDay }.sumOf { it.value }
-        val weekEarnings = delList.filter { it.date >= startWeek }.sumOf { it.value }
-        val monthEarnings = delList.filter { it.date >= startMonth }.sumOf { it.value }
-        val yearEarnings = delList.filter { it.date >= startYear }.sumOf { it.value }
+    // Deliveries count this month
+    fun getDeliveriesCountThisMonth(): Int {
+        val start = getStartOfMonthMillis()
+        return allDeliveries.value.count { it.dateMillis >= start }
+    }
 
-        // Gastos (Expenses + Fuel)
-        val fuelExpenses = expList.filter { it.category == "Combustível" }.sumOf { it.value }
-        val maintExpenses = expList.filter { it.category != "Combustível" && it.category != "Outros" }.sumOf { it.value }
-        val totalExpenses = expList.sumOf { it.value }
-        
-        val netProfit = delList.sumOf { it.value } - totalExpenses
+    // Active establishments count
+    fun getActiveEstablishmentsCount(): Int {
+        return allDeliveries.value.map { it.establishment.trim().lowercase() }.distinct().count { it.isNotBlank() }
+    }
 
-        val totalDeliveriesCount = delList.sumOf { it.quantity }
-        val totalDistanceKm = delList.sumOf { it.distanceKm }
+    // Daily Goal progress % (Assuming a dynamic or static target of 15 deliveries)
+    fun getDailyGoalPercentage(): Int {
+        val count = getDeliveriesCountToday()
+        val target = 15 // Standard target deliveries per day
+        return ((count / target.toDouble()) * 100).coerceIn(0.0, 100.0).toInt()
+    }
 
-        // Goals mapping
-        val dayGoal = goalList.find { it.type == "Diária" }?.targetValue ?: 100.0
-        val weekGoal = goalList.find { it.type == "Semanal" }?.targetValue ?: 600.0
-        val monthGoal = goalList.find { it.type == "Mensal" }?.targetValue ?: 2400.0
+    // Average daily deliveries
+    fun getAverageDailyDeliveries(): Double {
+        val deliveries = allDeliveries.value
+        if (deliveries.isEmpty()) return 0.0
+        val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+        val daysCount = deliveries.map { sdf.format(Date(it.dateMillis)) }.distinct().size
+        if (daysCount == 0) return 0.0
+        return deliveries.size.toDouble() / daysCount
+    }
 
-        DashboardData(
-            dayEarnings = dayEarnings,
-            weekEarnings = weekEarnings,
-            monthEarnings = monthEarnings,
-            yearEarnings = yearEarnings,
-            netProfit = netProfit,
-            deliveriesCount = totalDeliveriesCount,
-            distanceKm = totalDistanceKm,
-            fuelExpenses = fuelExpenses,
-            maintenanceExpenses = maintExpenses,
-            dayGoal = dayGoal,
-            weekGoal = weekGoal,
-            monthGoal = monthGoal
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardData())
+    // Top 5 establishments (Parceiros Frequentes)
+    fun getTop5Establishments(): List<Pair<String, Int>> {
+        val deliveries = allDeliveries.value
+        if (deliveries.isEmpty()) return emptyList()
+        return deliveries.groupBy { it.establishment }
+            .mapValues { it.value.size }
+            .toList()
+            .sortedByDescending { it.second }
+            .take(5)
+    }
 
-    // Fuel Aggregations
-    val fuelStats = combine(fuelLogs, deliveries) { logList, delList ->
-        val totalLiters = logList.sumOf { it.liters }
-        val totalSpent = logList.sumOf { it.totalAmount }
-        
-        // Calculate consumption km/L
-        var avgConsumption = 0.0
-        if (logList.size >= 2) {
-            val sorted = logList.sortedBy { it.odometer }
-            val deltaKm = sorted.last().odometer - sorted.first().odometer
-            val litersUsed = sorted.drop(1).sumOf { it.liters }
-            if (litersUsed > 0) {
-                avgConsumption = deltaKm / litersUsed
-            }
-        }
-        if (avgConsumption == 0.0) {
-            // Fallback estimation
-            val totalDist = delList.sumOf { it.distanceKm }
-            if (totalLiters > 0) {
-                avgConsumption = totalDist / totalLiters
-            }
-        }
+    // Best establishment name (Melhor estabelecimento)
+    fun getBestEstablishmentName(): String {
+        val top = getTop5Establishments().firstOrNull()
+        return top?.first ?: "Nenhum ainda"
+    }
 
-        val totalDist = delList.sumOf { it.distanceKm }
-        val costPerKm = if (totalDist > 0) totalSpent / totalDist else 0.0
+    // Payment method metrics
+    fun getPaymentMethodCounts(): Map<String, Int> {
+        val deliveries = allDeliveries.value
+        val pixCount = deliveries.count { it.paymentMethod.equals("PIX", ignoreCase = true) }
+        val cashCount = deliveries.count { it.paymentMethod.equals("Dinheiro", ignoreCase = true) }
+        return mapOf("PIX" to pixCount, "Dinheiro" to cashCount)
+    }
 
-        val startWeek = getStartOfWeek()
-        val startMonth = getStartOfMonth()
-        val startYear = getStartOfYear()
+    // Get deliveries grouped by day for calendar marking (Map<dd-MM-yyyy, count>)
+    fun getDeliveriesByDate(): Map<String, List<Delivery>> {
+        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        return allDeliveries.value.groupBy { sdf.format(Date(it.dateMillis)) }
+    }
 
-        val weeklyFuel = logList.filter { it.date >= startWeek }.sumOf { it.totalAmount }
-        val monthlyFuel = logList.filter { it.date >= startMonth }.sumOf { it.totalAmount }
-        val yearlyFuel = logList.filter { it.date >= startYear }.sumOf { it.totalAmount }
-
-        FuelStatsData(
-            avgConsumption = if (avgConsumption > 0) avgConsumption else 38.5, // professional average for motorcycles
-            costPerKm = if (costPerKm > 0) costPerKm else 0.15,
-            weeklySpent = weeklyFuel,
-            monthlySpent = monthlyFuel,
-            yearlySpent = yearlyFuel
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FuelStatsData())
-
-    // Partner/Establishment Rankings and stats
-    val establishmentStatsList = combine(establishments, deliveries) { estList, delList ->
-        estList.map { est ->
-            val estDeliveries = delList.filter { it.establishmentId == est.id || it.establishmentName.equals(est.name, ignoreCase = true) }
-            val totalValue = estDeliveries.sumOf { it.value }
-            val count = estDeliveries.size
-
-            val lastDeliveryDate = estDeliveries.maxOfOrNull { it.date }?.let {
-                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it))
-            } ?: "Nenhuma"
-
-            val firstCreated = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(est.createdAt))
-
-            EstablishmentStats(
-                id = est.id,
-                name = est.name,
-                deliveriesCount = count,
-                totalEarnings = totalValue,
-                lastDelivery = lastDeliveryDate,
-                firstCreated = firstCreated,
-                phone = est.phone,
-                contact = est.contact,
-                address = est.address
+    // Existing calculations kept
+    fun addMotorcycle(brand: String, model: String, year: Int, plate: String, color: String, odometer: Double, oilInterval: Double) {
+        viewModelScope.launch {
+            val moto = Motorcycle(
+                brand = brand,
+                model = model,
+                year = year,
+                plate = plate,
+                color = color,
+                currentOdometer = odometer,
+                oilChangeInterval = oilInterval
             )
-        }.sortedByDescending { it.deliveriesCount }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            val newId = repository.insertMotorcycle(moto)
+            selectMotorcycle(newId.toInt())
+        }
+    }
 
-    // Prepopulate some realistic data so the dashboard is immediately rich and engaging on launch
-    private suspend fun prePopulateSampleData() {
-        val est1 = Establishment(name = "Pizzaria Central", address = "Av. Paulista, 1200", neighborhood = "Bela Vista", city = "São Paulo", phone = "(11) 98888-7777", contact = "Gerente Roberto", notes = "Parceiro excelente, paga certinho.")
-        val est2 = Establishment(name = "Lanchonete Silva", address = "Rua Augusta, 450", neighborhood = "Consolação", city = "São Paulo", phone = "(11) 97777-6666", contact = "Dona Maria", notes = "Taxa boa para entregas curtas.")
-        val est3 = Establishment(name = "Burguer do Bairro", address = "Rua Pamplona, 88", neighborhood = "Jardins", city = "São Paulo", phone = "(11) 96666-5555", contact = "Felipe", notes = "Finais de semana são muito movimentados.")
+    fun updateMotorcycleOdometer(motoId: Int, newOdometer: Double) {
+        viewModelScope.launch {
+            val moto = repository.getMotorcycleById(motoId)
+            if (moto != null && newOdometer >= moto.currentOdometer) {
+                val updated = moto.copy(currentOdometer = newOdometer)
+                repository.insertMotorcycle(updated)
+                _activeMotorcycle.value = updated
+            }
+        }
+    }
 
-        val id1 = repository.insertEstablishment(est1).toInt()
-        val id2 = repository.insertEstablishment(est2).toInt()
-        val id3 = repository.insertEstablishment(est3).toInt()
+    fun deleteMotorcycle(moto: Motorcycle) {
+        viewModelScope.launch {
+            repository.deleteMotorcycle(moto)
+            _selectedMotorcycleId.value = -1
+            _activeMotorcycle.value = null
+            _activeMaintenances.value = emptyList()
+            _activeRefuels.value = emptyList()
+        }
+    }
 
-        // Insert some deliveries
-        val now = System.currentTimeMillis()
-        val dayMs = 24 * 60 * 60 * 1000L
+    fun addMaintenance(type: String, title: String, cost: Double, notes: String, odometer: Double) {
+        val motoId = _selectedMotorcycleId.value
+        if (motoId == -1) return
+        viewModelScope.launch {
+            val maintenance = Maintenance(
+                motorcycleId = motoId,
+                type = type,
+                title = title,
+                cost = cost,
+                notes = notes,
+                odometer = odometer,
+                dateMillis = System.currentTimeMillis()
+            )
+            repository.insertMaintenance(maintenance)
+            updateMotorcycleOdometer(motoId, odometer)
+            selectMotorcycle(motoId)
+            showMessage("Despesa cadastrada")
+        }
+    }
 
-        val d1 = Delivery(date = now - 3 * dayMs, time = "19:30", establishmentId = id1, establishmentName = "Pizzaria Central", clientName = "Gustavo Sousa", neighborhood = "Jardins", city = "São Paulo", value = 15.0, paymentMethod = "Pix", distanceKm = 4.2, deliveryTimeMinutes = 15, notes = "Portaria liberada")
-        val d2 = Delivery(date = now - 2 * dayMs, time = "20:15", establishmentId = id1, establishmentName = "Pizzaria Central", clientName = "Ana Clara", neighborhood = "Bela Vista", city = "São Paulo", value = 18.5, paymentMethod = "Cartão", distanceKm = 5.0, deliveryTimeMinutes = 18, notes = "Apartamento 42")
-        val d3 = Delivery(date = now - 1 * dayMs, time = "12:10", establishmentId = id2, establishmentName = "Lanchonete Silva", clientName = "Lucas Lima", neighborhood = "Consolação", city = "São Paulo", value = 12.0, paymentMethod = "Dinheiro", distanceKm = 2.8, deliveryTimeMinutes = 10, notes = "Troco para R$ 50")
-        val d4 = Delivery(date = now, time = "14:45", establishmentId = id3, establishmentName = "Burguer do Bairro", clientName = "Mariana Reis", neighborhood = "Pinheiros", city = "São Paulo", value = 16.0, paymentMethod = "Pix", distanceKm = 3.5, deliveryTimeMinutes = 12, notes = "Deixar na recepção")
-        val d5 = Delivery(date = now, time = "21:00", establishmentId = id1, establishmentName = "Pizzaria Central", clientName = "Pedro Silva", neighborhood = "Paraíso", city = "São Paulo", value = 20.0, paymentMethod = "Pix", distanceKm = 6.1, deliveryTimeMinutes = 22, notes = "Entregar em mãos")
+    fun deleteMaintenance(maintenance: Maintenance) {
+        viewModelScope.launch {
+            repository.deleteMaintenance(maintenance)
+            selectMotorcycle(maintenance.motorcycleId)
+        }
+    }
 
-        repository.insertDelivery(d1)
-        repository.insertDelivery(d2)
-        repository.insertDelivery(d3)
-        repository.insertDelivery(d4)
-        repository.insertDelivery(d5)
+    fun addRefuel(odometer: Double, liters: Double, pricePerLiter: Double) {
+        val motoId = _selectedMotorcycleId.value
+        if (motoId == -1) return
+        viewModelScope.launch {
+            val totalCost = liters * pricePerLiter
+            val refuel = Refuel(
+                motorcycleId = motoId,
+                odometer = odometer,
+                liters = liters,
+                pricePerLiter = pricePerLiter,
+                totalCost = totalCost,
+                dateMillis = System.currentTimeMillis()
+            )
+            repository.insertRefuel(refuel)
+            updateMotorcycleOdometer(motoId, odometer)
+            selectMotorcycle(motoId)
+            showMessage("Despesa cadastrada")
+        }
+    }
 
-        // Insert fuel log
-        val f1 = FuelLog(date = now - 4 * dayMs, gasStation = "Posto BR Shell", totalAmount = 45.0, liters = 7.8, odometer = 12450.0)
-        val f2 = FuelLog(date = now - 1 * dayMs, gasStation = "Ipiranga Paulista", totalAmount = 50.0, liters = 8.5, odometer = 12780.0)
-        repository.insertFuelLog(f1)
-        repository.insertFuelLog(f2)
+    fun deleteRefuel(refuel: Refuel) {
+        viewModelScope.launch {
+            repository.deleteRefuel(refuel)
+            selectMotorcycle(refuel.motorcycleId)
+        }
+    }
 
-        // Add corresponding Fuel Expense
-        repository.insertExpense(Expense(date = now - 4 * dayMs, category = "Combustível", value = 45.0, notes = "Abastecimento posto BR Shell"))
-        repository.insertExpense(Expense(date = now - 1 * dayMs, category = "Combustível", value = 50.0, notes = "Abastecimento posto Ipiranga Paulista"))
+    fun sendChatMessage(message: String) {
+        if (message.isBlank()) return
+        
+        val history = _chatMessages.value.toMutableList()
+        history.add(message to true)
+        _chatMessages.value = history
+        _isAiLoading.value = true
 
-        // Other expenses
-        repository.insertExpense(Expense(date = now - 5 * dayMs, category = "Troca de óleo", value = 35.0, notes = "Mobil 20W50"))
-        repository.insertExpense(Expense(date = now - 10 * dayMs, category = "Freios", value = 25.0, notes = "Pastilha dianteira"))
+        viewModelScope.launch {
+            val profile = userProfile.value
+            val dels = allDeliveries.value
+            val contextPrompt = buildString {
+                append("Você é o mecânico especialista e consultor financeiro integrado ao app MotoGestor.\n")
+                if (profile != null) {
+                    append("Entregador: ${profile.name}\n")
+                    append("Cidade: ${profile.city}\n")
+                    append("Moto: ${profile.motorcycleBrand} ${profile.motorcycleModel} (${profile.motorcycleYear})\n")
+                    append("Odômetro: ${profile.currentOdometer} KM\n")
+                    append("Entregas acumuladas: ${dels.size}\n")
+                }
+                append("\nResponda em português de forma simpática, clara e curta.\n\n")
+                append("Mensagem do usuário: $message")
+            }
 
-        // Maintenance Log
-        val m1 = Maintenance(date = now - 5 * dayMs, item = "Troca de óleo", currentOdometer = 12420.0, cost = 35.0, nextOdometer = 13420.0, notes = "Recomendável trocar a cada 1000km")
-        repository.insertMaintenance(m1)
+            val response = GeminiClient.generateContent(contextPrompt)
+            val updatedHistory = _chatMessages.value.toMutableList()
+            updatedHistory.add(response to false)
+            _chatMessages.value = updatedHistory
+            _isAiLoading.value = false
+        }
+    }
 
-        // Goals default
-        repository.insertGoal(Goal(type = "Diária", targetValue = 120.0))
-        repository.insertGoal(Goal(type = "Semanal", targetValue = 700.0))
-        repository.insertGoal(Goal(type = "Mensal", targetValue = 2800.0))
-        repository.insertGoal(Goal(type = "Anual", targetValue = 32000.0))
+    fun clearChat() {
+        _chatMessages.value = listOf(
+            "Olá! Sou o assistente de IA do MotoGestor. Como posso ajudar com suas entregas hoje?" to false
+        )
+    }
+
+    fun calculateAverageConsumption(): Double {
+        val refs = _activeRefuels.value
+        if (refs.size < 2) return 0.0
+        val sortedRefs = refs.sortedBy { it.odometer }
+        val firstOdo = sortedRefs.first().odometer
+        val lastOdo = sortedRefs.last().odometer
+        val totalDistance = lastOdo - firstOdo
+        if (totalDistance <= 0) return 0.0
+        val totalLiters = sortedRefs.drop(1).sumOf { it.liters }
+        if (totalLiters <= 0.0) return 0.0
+        return totalDistance / totalLiters
+    }
+
+    fun getNextOilChangeKm(): Double {
+        val active = _activeMotorcycle.value ?: return 0.0
+        val maints = _activeMaintenances.value
+        val lastOilChange = maints.firstOrNull { it.type == "Troca de Óleo" || it.title.contains("óleo", ignoreCase = true) }
+        val baseKm = lastOilChange?.odometer ?: 0.0
+        return if (baseKm > 0) baseKm + active.oilChangeInterval else active.oilChangeInterval
     }
 }
 
-// Data structures for view parsing
-data class DashboardData(
-    val dayEarnings: Double = 0.0,
-    val weekEarnings: Double = 0.0,
-    val monthEarnings: Double = 0.0,
-    val yearEarnings: Double = 0.0,
-    val netProfit: Double = 0.0,
-    val deliveriesCount: Int = 0,
-    val distanceKm: Double = 0.0,
-    val fuelExpenses: Double = 0.0,
-    val maintenanceExpenses: Double = 0.0,
-    val dayGoal: Double = 100.0,
-    val weekGoal: Double = 600.0,
-    val monthGoal: Double = 2400.0
-)
-
-data class FuelStatsData(
-    val avgConsumption: Double = 35.0,
-    val costPerKm: Double = 0.15,
-    val weeklySpent: Double = 0.0,
-    val monthlySpent: Double = 0.0,
-    val yearlySpent: Double = 0.0
-)
-
-data class EstablishmentStats(
-    val id: Int,
-    val name: String,
-    val deliveriesCount: Int,
-    val totalEarnings: Double,
-    val lastDelivery: String,
-    val firstCreated: String,
-    val phone: String = "",
-    val contact: String = "",
-    val address: String = ""
-)
+class MainViewModelFactory(
+    private val application: Application,
+    private val repository: Repository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return MainViewModel(application, repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}

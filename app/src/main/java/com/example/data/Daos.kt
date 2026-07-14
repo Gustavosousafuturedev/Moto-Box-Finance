@@ -1,68 +1,37 @@
 package com.example.data
 
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface DeliveryDao {
-    @Query("SELECT * FROM deliveries ORDER BY date DESC, id DESC")
-    fun getAllDeliveries(): Flow<List<Delivery>>
+interface MotorcycleDao {
+    @Query("SELECT * FROM motorcycles ORDER BY id DESC")
+    fun getAllMotorcycles(): Flow<List<Motorcycle>>
 
-    @Query("SELECT * FROM deliveries WHERE establishmentId = :estId ORDER BY date DESC")
-    fun getDeliveriesByEstablishment(estId: Int): Flow<List<Delivery>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertDelivery(delivery: Delivery): Long
-
-    @Delete
-    suspend fun deleteDelivery(delivery: Delivery)
-
-    @Query("DELETE FROM deliveries WHERE id = :id")
-    suspend fun deleteDeliveryById(id: Int)
-}
-
-@Dao
-interface EstablishmentDao {
-    @Query("SELECT * FROM establishments ORDER BY name ASC")
-    fun getAllEstablishments(): Flow<List<Establishment>>
+    @Query("SELECT * FROM motorcycles WHERE id = :id LIMIT 1")
+    suspend fun getMotorcycleById(id: Int): Motorcycle?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertEstablishment(establishment: Establishment): Long
+    suspend fun insertMotorcycle(motorcycle: Motorcycle): Long
+
+    @Update
+    suspend fun updateMotorcycle(motorcycle: Motorcycle)
 
     @Delete
-    suspend fun deleteEstablishment(establishment: Establishment)
-
-    @Query("DELETE FROM establishments WHERE id = :id")
-    suspend fun deleteEstablishmentById(id: Int)
-}
-
-@Dao
-interface FuelLogDao {
-    @Query("SELECT * FROM fuel_logs ORDER BY date DESC")
-    fun getAllFuelLogs(): Flow<List<FuelLog>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertFuelLog(fuelLog: FuelLog): Long
-
-    @Delete
-    suspend fun deleteFuelLog(fuelLog: FuelLog)
-}
-
-@Dao
-interface ExpenseDao {
-    @Query("SELECT * FROM expenses ORDER BY date DESC")
-    fun getAllExpenses(): Flow<List<Expense>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertExpense(expense: Expense): Long
-
-    @Delete
-    suspend fun deleteExpense(expense: Expense)
+    suspend fun deleteMotorcycle(motorcycle: Motorcycle)
 }
 
 @Dao
 interface MaintenanceDao {
-    @Query("SELECT * FROM maintenances ORDER BY date DESC")
+    @Query("SELECT * FROM maintenances WHERE motorcycleId = :motorcycleId ORDER BY dateMillis DESC")
+    fun getMaintenancesForMotorcycle(motorcycleId: Int): Flow<List<Maintenance>>
+
+    @Query("SELECT * FROM maintenances ORDER BY dateMillis DESC")
     fun getAllMaintenances(): Flow<List<Maintenance>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -73,16 +42,58 @@ interface MaintenanceDao {
 }
 
 @Dao
-interface GoalDao {
-    @Query("SELECT * FROM goals")
-    fun getAllGoals(): Flow<List<Goal>>
+interface RefuelDao {
+    @Query("SELECT * FROM refuels WHERE motorcycleId = :motorcycleId ORDER BY odometer DESC")
+    fun getRefuelsForMotorcycle(motorcycleId: Int): Flow<List<Refuel>>
 
-    @Query("SELECT * FROM goals WHERE type = :type LIMIT 1")
-    fun getGoalByType(type: String): Flow<Goal?>
+    @Query("SELECT * FROM refuels ORDER BY odometer DESC")
+    fun getAllRefuels(): Flow<List<Refuel>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertGoal(goal: Goal): Long
+    suspend fun insertRefuel(refuel: Refuel): Long
 
     @Delete
-    suspend fun deleteGoal(goal: Goal)
+    suspend fun deleteRefuel(refuel: Refuel)
+}
+
+@Dao
+interface DeliveryDao {
+    @Query("SELECT * FROM deliveries ORDER BY dateMillis DESC")
+    fun getAllDeliveries(): Flow<List<Delivery>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDelivery(delivery: Delivery): Long
+
+    @Update
+    suspend fun updateDelivery(delivery: Delivery)
+
+    @Delete
+    suspend fun deleteDelivery(delivery: Delivery)
+}
+
+@Dao
+interface ExpenseDao {
+    @Query("SELECT * FROM expenses ORDER BY dateMillis DESC")
+    fun getAllExpenses(): Flow<List<Expense>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExpense(expense: Expense): Long
+
+    @Update
+    suspend fun updateExpense(expense: Expense)
+
+    @Delete
+    suspend fun deleteExpense(expense: Expense)
+}
+
+@Dao
+interface UserProfileDao {
+    @Query("SELECT * FROM user_profiles WHERE id = 1 LIMIT 1")
+    fun getUserProfileFlow(): Flow<UserProfile?>
+
+    @Query("SELECT * FROM user_profiles WHERE id = 1 LIMIT 1")
+    suspend fun getUserProfile(): UserProfile?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUserProfile(profile: UserProfile): Long
 }

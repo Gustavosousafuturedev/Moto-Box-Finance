@@ -6,24 +6,17 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [
-        Delivery::class,
-        Establishment::class,
-        FuelLog::class,
-        Expense::class,
-        Maintenance::class,
-        Goal::class
-    ],
-    version = 3,
+    entities = [Motorcycle::class, Maintenance::class, Refuel::class, Delivery::class, Expense::class, UserProfile::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun deliveryDao(): DeliveryDao
-    abstract fun establishmentDao(): EstablishmentDao
-    abstract fun fuelLogDao(): FuelLogDao
-    abstract fun expenseDao(): ExpenseDao
+    abstract fun motorcycleDao(): MotorcycleDao
     abstract fun maintenanceDao(): MaintenanceDao
-    abstract fun goalDao(): GoalDao
+    abstract fun refuelDao(): RefuelDao
+    abstract fun deliveryDao(): DeliveryDao
+    abstract fun expenseDao(): ExpenseDao
+    abstract fun userProfileDao(): UserProfileDao
 
     companion object {
         @Volatile
