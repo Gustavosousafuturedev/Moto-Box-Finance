@@ -12,6 +12,7 @@ class AppRepository(private val database: AppDatabase) {
 
     // Deliveries
     val allDeliveries: Flow<List<Delivery>> = deliveryDao.getAllDeliveries()
+    val distinctEstablishments: Flow<List<String>> = deliveryDao.getDistinctEstablishments()
     
     fun getDeliveriesByEstablishment(estId: Int): Flow<List<Delivery>> {
         return deliveryDao.getDeliveriesByEstablishment(estId)

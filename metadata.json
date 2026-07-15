@@ -1,5 +1,5 @@
 {
-  "name": "MOTOBOX Finance",
+  "name": "NuCorre",
   "description": "Aplicativo profissional para motoboys controlarem entregas, faturamento, despesas e manutenção.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

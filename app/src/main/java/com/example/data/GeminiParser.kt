@@ -28,7 +28,7 @@ object GeminiParser {
         }
 
         val prompt = """
-            Você é um assistente de inteligência artificial de extração de dados em português para o aplicativo de motoboys 'MOTOBOX Finance'. 
+            Você é um assistente de inteligência artificial de extração de dados em português para o aplicativo de motoboys 'NuCorre'. 
             Sua única tarefa é analisar uma frase falada pelo motoboy e extrair três informações:
             1. O estabelecimento (nome do estabelecimento/restaurante de onde sai a entrega)
             2. O bairro (nome do bairro de destino)

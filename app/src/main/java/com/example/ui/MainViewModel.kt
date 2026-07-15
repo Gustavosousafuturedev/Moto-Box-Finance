@@ -32,7 +32,22 @@ enum class Screen {
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     private val repository = AppRepository(database)
-    private val sharedPrefs = application.getSharedPreferences("motogestor_prefs", Context.MODE_PRIVATE)
+    private val sharedPrefs = application.getSharedPreferences("nucorre_prefs", Context.MODE_PRIVATE).apply {
+        val oldPrefs = application.getSharedPreferences("motogestor_prefs", Context.MODE_PRIVATE)
+        if (oldPrefs.all.isNotEmpty() && this.all.isEmpty()) {
+            val editor = this.edit()
+            oldPrefs.all.forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Long -> editor.putLong(key, value)
+                }
+            }
+            editor.apply()
+        }
+    }
 
     // Current screen navigation state
     private val _currentScreen = MutableStateFlow(Screen.Dashboard)
@@ -40,6 +55,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Flows from database
     val deliveries = repository.allDeliveries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val distinctEstablishments = repository.distinctEstablishments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val establishments = repository.allEstablishments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val fuelLogs = repository.allFuelLogs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val expenses = repository.allExpenses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -502,7 +518,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 backupObj.put("goals", goalArray)
 
                 // Save to app external storage
-                val backupFile = File(context.getExternalFilesDir(null), "motogestor_backup.json")
+                val backupFile = File(context.getExternalFilesDir(null), "nucorre_backup.json")
                 backupFile.writeText(backupObj.toString(2))
                 
                 onResult(true, backupFile.name)
@@ -516,7 +532,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun triggerRestore(context: Context, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
-                val backupFile = File(context.getExternalFilesDir(null), "motogestor_backup.json")
+                var backupFile = File(context.getExternalFilesDir(null), "nucorre_backup.json")
+                if (!backupFile.exists()) {
+                    backupFile = File(context.getExternalFilesDir(null), "motogestor_backup.json")
+                }
                 if (!backupFile.exists()) {
                     onResult(false, "Nenhum arquivo de backup encontrado.")
                     return@launch

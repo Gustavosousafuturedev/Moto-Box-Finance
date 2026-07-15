@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "MOTOBOX Finance"
+rootProject.name = "NuCorre"
 
 include(":app")

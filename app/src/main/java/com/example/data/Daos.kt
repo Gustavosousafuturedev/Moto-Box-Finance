@@ -8,6 +8,9 @@ interface DeliveryDao {
     @Query("SELECT * FROM deliveries ORDER BY date DESC, id DESC")
     fun getAllDeliveries(): Flow<List<Delivery>>
 
+    @Query("SELECT DISTINCT establishmentName FROM deliveries ORDER BY establishmentName ASC")
+    fun getDistinctEstablishments(): Flow<List<String>>
+
     @Query("SELECT * FROM deliveries WHERE establishmentId = :estId ORDER BY date DESC")
     fun getDeliveriesByEstablishment(estId: Int): Flow<List<Delivery>>
 

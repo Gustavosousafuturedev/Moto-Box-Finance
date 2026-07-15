@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -165,6 +166,7 @@ fun MainAppScaffold(
     var editingDelivery by remember { mutableStateOf<Delivery?>(null) }
     var showPartnersDialog by remember { mutableStateOf(false) }
     val establishments by viewModel.establishments.collectAsStateWithLifecycle()
+    val distinctEstablishments by viewModel.distinctEstablishments.collectAsStateWithLifecycle()
 
     // Alert badge count based on maintenance warnings
     val maintenances by viewModel.maintenances.collectAsStateWithLifecycle()
@@ -226,21 +228,6 @@ fun MainAppScaffold(
                         modifier = Modifier.size(56.dp)
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = "Lançar Entrega", modifier = Modifier.size(28.dp))
-                    }
-
-                    // Botão do Comando de Voz (existente)
-                    FloatingActionButton(
-                        onClick = onTriggerVoiceInput,
-                        containerColor = MaterialTheme.colorScheme.tertiary,
-                        contentColor = MaterialTheme.colorScheme.onTertiary,
-                        shape = CircleShape,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        if (voiceProcessing) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.onTertiary, modifier = Modifier.size(24.dp))
-                        } else {
-                            Icon(Icons.Filled.Mic, contentDescription = "Comando de Voz", modifier = Modifier.size(28.dp))
-                        }
                     }
                 }
             }
@@ -309,7 +296,7 @@ fun MainAppScaffold(
                     },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("A inteligência artificial do MOTOBOX Finance preencheu os campos para você. Confirme os dados antes de salvar:")
+                            Text("A inteligência artificial do NuCorre preencheu os campos para você. Confirme os dados antes de salvar:")
                             
                             OutlinedTextField(
                                 value = data.establishment,
@@ -371,6 +358,7 @@ fun MainAppScaffold(
         AddEditDeliveryDialog(
             delivery = null,
             establishments = establishments,
+            distinctEstablishments = distinctEstablishments,
             onDismiss = { showAddDeliveryDialog = false },
             onSave = { name, neigh, cty, valPrice, payMet, dist, cliName, notesText, qty, fee, feeFarther ->
                 viewModel.insertDelivery(
@@ -396,6 +384,7 @@ fun MainAppScaffold(
         AddEditDeliveryDialog(
             delivery = delivery,
             establishments = establishments,
+            distinctEstablishments = distinctEstablishments,
             onDismiss = { editingDelivery = null },
             onSave = { name, neigh, cty, valPrice, payMet, dist, cliName, notesText, qty, fee, feeFarther ->
                 viewModel.updateDelivery(
@@ -450,6 +439,7 @@ fun MainAppScaffold(
 fun AddEditDeliveryDialog(
     delivery: com.example.data.Delivery? = null,
     establishments: List<com.example.data.Establishment>,
+    distinctEstablishments: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (
         establishmentName: String,
@@ -483,6 +473,17 @@ fun AddEditDeliveryDialog(
     var paymentMethod by remember { mutableStateOf(delivery?.paymentMethod ?: "Pix") }
     var notes by remember { mutableStateOf(delivery?.notes ?: "") }
 
+    var showSuggestions by remember { mutableStateOf(false) }
+    val filteredSuggestions = remember(estName, distinctEstablishments) {
+        if (estName.isNotBlank()) {
+            distinctEstablishments.filter {
+                it.contains(estName, ignoreCase = true) && !it.equals(estName, ignoreCase = true)
+            }
+        } else {
+            emptyList()
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -499,33 +500,34 @@ fun AddEditDeliveryDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                OutlinedTextField(
-                    value = estName,
-                    onValueChange = { estName = it },
-                    label = { Text("Nome do Estabelecimento *") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = estName,
+                        onValueChange = { 
+                            estName = it
+                            showSuggestions = true
+                        },
+                        label = { Text("Nome do Estabelecimento *") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                OutlinedTextField(
-                    value = clientName,
-                    onValueChange = { clientName = it },
-                    label = { Text("Cliente (opcional)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = neighborhood,
-                    onValueChange = { neighborhood = it },
-                    label = { Text("Bairro Destino *") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = city,
-                    onValueChange = { city = it },
-                    label = { Text("Cidade *") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    DropdownMenu(
+                        expanded = showSuggestions && filteredSuggestions.isNotEmpty(),
+                        onDismissRequest = { showSuggestions = false },
+                        properties = PopupProperties(focusable = false),
+                        modifier = Modifier.fillMaxWidth(0.9f)
+                    ) {
+                        filteredSuggestions.forEach { suggestion ->
+                            DropdownMenuItem(
+                                text = { Text(suggestion) },
+                                onClick = {
+                                    estName = suggestion
+                                    showSuggestions = false
+                                }
+                            )
+                        }
+                    }
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -616,7 +618,7 @@ fun AddEditDeliveryDialog(
                     val feeFarther = feeFartherDeliveriesStr.replace(',', '.').toDoubleOrNull() ?: 0.0
                     val value = (quantity * fee) + feeFarther
                     val distance = distanceStr.replace(',', '.').toDoubleOrNull()
-                    if (estName.isNotEmpty() && neighborhood.isNotEmpty() && feePerDeliveryStr.isNotEmpty() && distance != null) {
+                    if (estName.isNotEmpty() && feePerDeliveryStr.isNotEmpty() && distance != null) {
                         onSave(
                             estName,
                             neighborhood,
@@ -681,8 +683,8 @@ fun HeaderBar(
                     )
                 } else {
                     Image(
-                        painter = painterResource(id = R.drawable.motobox_logo),
-                        contentDescription = "Logo MOTOBOX Finance",
+                        painter = painterResource(id = R.drawable.img_nucorre_logo_1784120333345),
+                        contentDescription = "Logo NuCorre",
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
@@ -693,7 +695,7 @@ fun HeaderBar(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "MOTOBOX Finance",
+                        text = "NuCorre",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -986,10 +988,7 @@ fun DeliveriesScreen(
             deliveries
         } else {
             deliveries.filter { d ->
-                d.establishmentName.contains(searchQuery, ignoreCase = true) ||
-                d.neighborhood.contains(searchQuery, ignoreCase = true) ||
-                d.city.contains(searchQuery, ignoreCase = true) ||
-                d.paymentMethod.contains(searchQuery, ignoreCase = true)
+                d.establishmentName.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -1000,7 +999,7 @@ fun DeliveriesScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Filtrar por Estab., Bairro, Cidade, Pagamento...") },
+                placeholder = { Text("Filtrar por estabelecimento") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -1038,21 +1037,44 @@ fun DeliveryItemCard(delivery: Delivery, onEdit: () -> Unit, onDelete: () -> Uni
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(delivery.establishmentName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = delivery.establishmentName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .wrapContentWidth()
                     ) {
-                        Text(delivery.paymentMethod, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = delivery.paymentMethod,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
-                Text("Bairro: ${delivery.neighborhood} - ${delivery.city}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 Text("Distância: ${delivery.distanceKm} km | Hora: ${delivery.time}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 if (delivery.notes.isNotEmpty()) {
-                    Text("Obs: ${delivery.notes}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                    Text(
+                        text = "Obs: ${delivery.notes}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             
@@ -1882,7 +1904,7 @@ fun RegisterCloseScreen(viewModel: MainViewModel) {
         val topEst = group.maxByOrNull { it.value.size }?.key ?: "Nenhum"
 
         """
-        === 🏍️ MOTOBOX Finance - FECHAMENTO ===
+        === 🏍️ NuCorre - FECHAMENTO ===
         Data: ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())}
         ------------------------------------------
         • Total de entregas: ${todayDeliveries.size}
@@ -1893,7 +1915,7 @@ fun RegisterCloseScreen(viewModel: MainViewModel) {
         • Estabelecimento top: $topEst
         • Tempo trabalhado: $hoursWorked horas
         ------------------------------------------
-        Gerado pelo MOTOBOX Finance offline.
+        Gerado pelo NuCorre offline.
         """.trimIndent().format(stats.dayEarnings, stats.fuelExpenses, stats.dayEarnings - stats.fuelExpenses, stats.fuelExpenses)
     }
 
@@ -2073,7 +2095,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
             }
             
             """
-            *MOTOBOX FINANCE - RELATÓRIO*
+            *NUCORRE - RELATÓRIO*
             Período: $selectedPeriod
             ------------------------------
             Total de Entregas: $count
@@ -2107,7 +2129,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText("Relatório Motobox", reportText)
+                        val clip = android.content.ClipData.newPlainText("Relatório NuCorre", reportText)
                         clipboard.setPrimaryClip(clip)
                         Toast.makeText(context, "Relatório copiado para a área de transferência!", Toast.LENGTH_SHORT).show()
                     },
@@ -2162,7 +2184,7 @@ fun PartnerReportScreen(viewModel: MainViewModel) {
         // Generated professional layout
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("MOTOBOX Finance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("NuCorre", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Text("Relatório de Entregas", style = MaterialTheme.typography.titleSmall)
                 Text("Emissão: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())}", style = MaterialTheme.typography.labelSmall)
                 HorizontalDivider()
@@ -2261,7 +2283,7 @@ fun SettingsScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Uni
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Configurações do MOTOBOX Finance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Configurações do NuCorre", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2455,7 +2477,7 @@ fun saveFileToDownloads(
 }
 
 fun exportDeliveriesToCsv(context: android.content.Context, deliveries: List<Delivery>) {
-    val fileName = "motobox_entregas_${System.currentTimeMillis()}.csv"
+    val fileName = "nucorre_entregas_${System.currentTimeMillis()}.csv"
     val resultUri = saveFileToDownloads(context, fileName, "text/csv") { outputStream ->
         outputStream.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
         val writer = outputStream.bufferedWriter(Charsets.UTF_8)
@@ -2487,7 +2509,7 @@ fun exportDeliveriesToCsv(context: android.content.Context, deliveries: List<Del
 }
 
 fun exportDeliveriesToPdf(context: android.content.Context, deliveries: List<Delivery>) {
-    val fileName = "motobox_relatorio_geral_${System.currentTimeMillis()}.pdf"
+    val fileName = "nucorre_relatorio_geral_${System.currentTimeMillis()}.pdf"
     val resultUri = saveFileToDownloads(context, fileName, "application/pdf") { outputStream ->
         val pdfDocument = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
@@ -2526,7 +2548,7 @@ fun exportDeliveriesToPdf(context: android.content.Context, deliveries: List<Del
         }
         
         var y = 50f
-        canvas.drawText("MOTOBOX FINANCE", 40f, y, titlePaint)
+        canvas.drawText("NUCORRE", 40f, y, titlePaint)
         y += 25f
         
         val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -2609,7 +2631,7 @@ fun exportEstablishmentReportToPdf(
     selectedEst: String,
     estStats: List<com.example.ui.EstablishmentStats>
 ) {
-    val fileName = "motobox_relatorio_parceiro_${System.currentTimeMillis()}.pdf"
+    val fileName = "nucorre_relatorio_parceiro_${System.currentTimeMillis()}.pdf"
     val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
     if (!documentsDir.exists()) {
         documentsDir.mkdirs()
@@ -2646,7 +2668,7 @@ fun exportEstablishmentReportToPdf(
             }
             
             var y = 50f
-            canvas.drawText("MOTOBOX FINANCE", 40f, y, titlePaint)
+            canvas.drawText("NUCORRE", 40f, y, titlePaint)
             y += 25f
             
             canvas.drawText("Relatório de Entregas por Estabelecimento", 40f, y, textPaint.apply { textSize = 11f; typeface = Typeface.DEFAULT_BOLD })
@@ -3029,7 +3051,7 @@ fun ExportarRelatorioScreen(viewModel: MainViewModel) {
                                     Toast.makeText(context, "Erro ao salvar relatório em PDF.", Toast.LENGTH_SHORT).show()
                                 }
                             } catch (e: Exception) {
-                                Log.e("MotoGestor", "Erro ao exportar PDF: ${e.message}", e)
+                                Log.e("NuCorre", "Erro ao exportar PDF: ${e.message}", e)
                                 Toast.makeText(context, "Erro inesperado ao gerar PDF.", Toast.LENGTH_SHORT).show()
                             } finally {
                                 isLoading = false
@@ -3072,7 +3094,7 @@ fun ExportarRelatorioScreen(viewModel: MainViewModel) {
                                     Toast.makeText(context, "Erro ao salvar planilha do Excel.", Toast.LENGTH_SHORT).show()
                                 }
                             } catch (e: Exception) {
-                                Log.e("MotoGestor", "Erro ao exportar Excel: ${e.message}", e)
+                                Log.e("NuCorre", "Erro ao exportar Excel: ${e.message}", e)
                                 Toast.makeText(context, "Erro inesperado ao gerar Excel.", Toast.LENGTH_SHORT).show()
                             } finally {
                                 isLoading = false
@@ -3152,7 +3174,7 @@ fun ExportarRelatorioScreen(viewModel: MainViewModel) {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "Local: Documentos/MotoGestor/",
+                            text = "Local: Documentos/NuCorre/",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                         )

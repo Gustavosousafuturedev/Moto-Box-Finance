@@ -105,7 +105,7 @@ object ExportHelpers {
         }
     }
 
-    // Save File to Documents/MotoGestor/ using MediaStore or File API fallback
+    // Save File to Documents/NuCorre/ using MediaStore or File API fallback
     fun saveFileToDocuments(
         context: Context,
         fileName: String,
@@ -117,29 +117,29 @@ object ExportHelpers {
                 val resolver = context.contentResolver
                 var uri: Uri? = null
 
-                // Try saving in Documents/MotoGestor
+                // Try saving in Documents/NuCorre
                 try {
                     val contentValues = ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                         put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/MotoGestor")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/NuCorre")
                     }
                     uri = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Erro ao criar em Documents/MotoGestor, tentando Downloads/MotoGestor...", e)
+                    Log.e(TAG, "Erro ao criar em Documents/NuCorre, tentando Downloads/NuCorre...", e)
                 }
 
-                // Fallback to Download/MotoGestor if Documents failed
+                // Fallback to Download/NuCorre if Documents failed
                 if (uri == null) {
                     try {
                         val contentValues = ContentValues().apply {
                             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                             put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                            put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/MotoGestor")
+                            put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/NuCorre")
                         }
                         uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Erro ao criar em Download/MotoGestor...", e)
+                        Log.e(TAG, "Erro ao criar em Download/NuCorre...", e)
                     }
                 }
 
@@ -151,11 +151,11 @@ object ExportHelpers {
                 uri
             } else {
                 val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-                val motoGestorDir = File(documentsDir, "MotoGestor")
-                if (!motoGestorDir.exists()) {
-                    motoGestorDir.mkdirs()
+                val nuCorreDir = File(documentsDir, "NuCorre")
+                if (!nuCorreDir.exists()) {
+                    nuCorreDir.mkdirs()
                 }
-                val file = File(motoGestorDir, fileName)
+                val file = File(nuCorreDir, fileName)
                 FileOutputStream(file).use { outputStream ->
                     writeBlock(outputStream)
                 }
@@ -260,7 +260,7 @@ object ExportHelpers {
                 fun drawPageHeader(pageNum: Int, pageCanvas: Canvas) {
                     // Try drawing logo
                     try {
-                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.motobox_logo)
+                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.img_nucorre_logo_1784120333345)
                         if (logo != null) {
                             val scaledLogo = Bitmap.createScaledBitmap(logo, 45, 45, true)
                             pageCanvas.drawBitmap(scaledLogo, 40f, 40f, null)
@@ -270,7 +270,7 @@ object ExportHelpers {
                     }
 
                     pageCanvas.drawText("RELATÓRIO DE ENTREGAS", 100f, 58f, titlePaint)
-                    pageCanvas.drawText("MotoGestor • Inteligência Financeira para Entregadores", 100f, 74f, subtitlePaint)
+                    pageCanvas.drawText("NuCorre • Inteligência Financeira para Entregadores", 100f, 74f, subtitlePaint)
                     
                     pageCanvas.drawLine(40f, 100f, 555f, 100f, linePaint)
 
@@ -392,7 +392,7 @@ object ExportHelpers {
                 canvas.drawText("Valor Bruto: R$ %.2f".format(totalEarnings), 210f, y + 25f, totalPaintText)
                 canvas.drawText("Valor Médio: R$ %.2f".format(averageEarning), 380f, y + 25f, totalPaintText)
                 
-                canvas.drawText("Relatório financeiro gerado com segurança através do MotoGestor.", 55f, y + 48f, subtitlePaint.apply { textSize = 8.5f })
+                canvas.drawText("Relatório financeiro gerado com segurança através do NuCorre.", 55f, y + 48f, subtitlePaint.apply { textSize = 8.5f })
 
                 pdfDocument.finishPage(page)
 
@@ -404,7 +404,7 @@ object ExportHelpers {
 
                     // Header for Summary Page
                     try {
-                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.motobox_logo)
+                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.img_nucorre_logo_1784120333345)
                         if (logo != null) {
                             val scaledLogo = Bitmap.createScaledBitmap(logo, 45, 45, true)
                             sumCanvas.drawBitmap(scaledLogo, 40f, 40f, null)
@@ -414,7 +414,7 @@ object ExportHelpers {
                     }
 
                     sumCanvas.drawText("RESUMO POR ESTABELECIMENTO", 100f, 58f, titlePaint)
-                    sumCanvas.drawText("MotoGestor • Total Geral de Ganhos Consolidados", 100f, 74f, subtitlePaint)
+                    sumCanvas.drawText("NuCorre • Total Geral de Ganhos Consolidados", 100f, 74f, subtitlePaint)
                     sumCanvas.drawLine(40f, 100f, 555f, 100f, linePaint)
 
                     // Info block
@@ -619,8 +619,8 @@ object ExportHelpers {
     fun shareToEmail(context: Context, uri: Uri) {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "message/rfc822"
-            putExtra(Intent.EXTRA_SUBJECT, "Relatório de Entregas - MotoGestor")
-            putExtra(Intent.EXTRA_TEXT, "Olá,\n\nSegue em anexo o relatório de entregas gerado pelo aplicativo MotoGestor.")
+            putExtra(Intent.EXTRA_SUBJECT, "Relatório de Entregas - NuCorre")
+            putExtra(Intent.EXTRA_TEXT, "Olá,\n\nSegue em anexo o relatório de entregas gerado pelo aplicativo NuCorre.")
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

@@ -13,7 +13,7 @@ import java.util.Calendar
 class NotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "motobox_daily_reminder"
+        val channelId = "nucorre_daily_reminder"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -38,7 +38,7 @@ class NotificationReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("MOTOBOX Finance")
+            .setContentTitle("NuCorre")
             .setContentText("Não se esqueça de anotar suas entregas!")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)

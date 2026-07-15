@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/motobox_logo"
+        android:drawable="@drawable/img_nucorre_logo_1784120333345"
         android:gravity="center" />
 </layer-list>
