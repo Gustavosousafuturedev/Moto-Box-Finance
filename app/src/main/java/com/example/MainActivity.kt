@@ -138,6 +138,28 @@ fun MainAppScaffold(
     val voiceProcessing by viewModel.voiceProcessing.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Dirty form tracking states
+    var isFormDirty by remember { mutableStateOf(false) }
+    var pendingNavigationTarget by remember { mutableStateOf<Screen?>(null) }
+    var showDiscardConfirmationDialog by remember { mutableStateOf(false) }
+
+    val safeNavigateTo: (Screen) -> Unit = { targetScreen ->
+        if (targetScreen == currentScreen) {
+            // Already there
+        } else if (isFormDirty) {
+            pendingNavigationTarget = targetScreen
+            showDiscardConfirmationDialog = true
+        } else {
+            viewModel.navigateTo(targetScreen)
+        }
+    }
+
+    // Intercept system back button if any form is dirty
+    androidx.activity.compose.BackHandler(enabled = isFormDirty) {
+        pendingNavigationTarget = Screen.Dashboard
+        showDiscardConfirmationDialog = true
+    }
+
     // Dialog state variables
     var showAddDeliveryDialog by remember { mutableStateOf(false) }
     var editingDelivery by remember { mutableStateOf<Delivery?>(null) }
@@ -159,18 +181,23 @@ fun MainAppScaffold(
                 motoboyName = motoboyName,
                 motoboyPhotoUri = motoboyPhotoUri,
                 alertCount = odometerAlerts.size,
-                onAlertClick = { viewModel.navigateTo(Screen.ControleManutencao) },
-                onNavigateConfig = { viewModel.navigateTo(Screen.Configuracoes) },
+                onAlertClick = { safeNavigateTo(Screen.ControleManutencao) },
+                onNavigateConfig = { safeNavigateTo(Screen.Configuracoes) },
                 onBackupClick = {
-                    viewModel.triggerBackup()
-                    Toast.makeText(context, "Sincronização offline SQLite + Firestore realizada com sucesso!", Toast.LENGTH_SHORT).show()
+                    viewModel.triggerBackup(context) { success, msg ->
+                        if (success) {
+                            Toast.makeText(context, "Backup offline salvo com sucesso!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Erro ao realizar backup: $msg", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
             )
         },
         bottomBar = {
             BottomNavBar(
                 currentScreen = currentScreen,
-                onTabSelect = { viewModel.navigateTo(it) }
+                onTabSelect = { safeNavigateTo(it) }
             )
         },
         floatingActionButton = {
@@ -228,15 +255,45 @@ fun MainAppScaffold(
                 Screen.Dashboard -> DashboardScreen(viewModel)
                 Screen.CadastroEntrega -> DeliveriesScreen(viewModel, onEditDelivery = { editingDelivery = it })
                 Screen.CadastroEstabelecimento -> EstablishmentsScreen(viewModel)
-                Screen.ControleCombustivel -> FuelScreen(viewModel)
-                Screen.ControleDespesas -> ExpensesScreen(viewModel)
-                Screen.ControleManutencao -> MaintenanceScreen(viewModel)
+                Screen.ControleCombustivel -> FuelScreen(viewModel, onFormDirtyChange = { isFormDirty = it })
+                Screen.ControleDespesas -> ExpensesScreen(viewModel, onFormDirtyChange = { isFormDirty = it })
+                Screen.ControleManutencao -> MaintenanceScreen(viewModel, onFormDirtyChange = { isFormDirty = it })
                 Screen.Metas -> GoalsScreen(viewModel)
                 Screen.FechamentoCaixa -> RegisterCloseScreen(viewModel)
                 Screen.Relatorios -> ReportsScreen(viewModel)
                 Screen.RelatorioEstabelecimento -> PartnerReportScreen(viewModel)
-                Screen.Configuracoes -> SettingsScreen(viewModel)
+                Screen.Configuracoes -> SettingsScreen(viewModel, onFormDirtyChange = { isFormDirty = it })
                 Screen.ExportarRelatorio -> ExportarRelatorioScreen(viewModel)
+            }
+
+            // Discard warning confirmation Dialog
+            if (showDiscardConfirmationDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDiscardConfirmationDialog = false },
+                    title = { Text("Descartar alterações?") },
+                    text = { Text("Você preencheu algumas informações neste formulário. Se sair agora, as alterações não salvas serão perdidas.") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showDiscardConfirmationDialog = false
+                                isFormDirty = false
+                                val target = pendingNavigationTarget
+                                if (target != null) {
+                                    viewModel.navigateTo(target)
+                                } else {
+                                    viewModel.navigateTo(Screen.Dashboard)
+                                }
+                            }
+                        ) {
+                            Text("Descartar")
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(onClick = { showDiscardConfirmationDialog = false }) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
             }
 
             // Overlay Voice Command Pre-fill confirmation Dialog
@@ -1252,14 +1309,14 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
 // TELA 3: CONTROLE DE COMBUSTÍVEL
 // =====================================================
 @Composable
-fun FuelScreen(viewModel: MainViewModel) {
+fun FuelScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Unit = {}) {
     Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        FuelScreenContent(viewModel)
+        FuelScreenContent(viewModel, onFormDirtyChange)
     }
 }
 
 @Composable
-fun FuelScreenContent(viewModel: MainViewModel) {
+fun FuelScreenContent(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Unit = {}) {
     val fuelLogs by viewModel.fuelLogs.collectAsStateWithLifecycle()
     val stats by viewModel.fuelStats.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -1268,6 +1325,17 @@ fun FuelScreenContent(viewModel: MainViewModel) {
     var litersStr by remember { mutableStateOf("") }
     var odometerStr by remember { mutableStateOf("") }
     var gasStation by remember { mutableStateOf("") }
+
+    // Track dirty state of the form
+    LaunchedEffect(gasStation, amountStr, litersStr, odometerStr) {
+        val dirty = gasStation.isNotEmpty() || amountStr.isNotEmpty() || litersStr.isNotEmpty() || odometerStr.isNotEmpty()
+        onFormDirtyChange(dirty)
+    }
+
+    val isAmountValid = amountStr.replace(',', '.').toDoubleOrNull()?.let { it > 0 } ?: false
+    val isLitersValid = litersStr.replace(',', '.').toDoubleOrNull()?.let { it > 0 } ?: false
+    val isOdometerValid = odometerStr.replace(',', '.').toDoubleOrNull()?.let { it > 0 } ?: false
+    val isFuelFormValid = gasStation.isNotBlank() && isAmountValid && isLitersValid && isOdometerValid
 
     Column(
         modifier = Modifier
@@ -1309,6 +1377,7 @@ fun FuelScreenContent(viewModel: MainViewModel) {
                     value = gasStation,
                     onValueChange = { gasStation = it },
                     label = { Text("Posto de Combustível *") },
+                    isError = gasStation.isNotEmpty() && gasStation.isBlank(),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1317,6 +1386,7 @@ fun FuelScreenContent(viewModel: MainViewModel) {
                         value = amountStr,
                         onValueChange = { amountStr = it },
                         label = { Text("Valor Gasto (R$) *") },
+                        isError = amountStr.isNotEmpty() && !isAmountValid,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -1324,6 +1394,7 @@ fun FuelScreenContent(viewModel: MainViewModel) {
                         value = litersStr,
                         onValueChange = { litersStr = it },
                         label = { Text("Litros *") },
+                        isError = litersStr.isNotEmpty() && !isLitersValid,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -1333,6 +1404,7 @@ fun FuelScreenContent(viewModel: MainViewModel) {
                     value = odometerStr,
                     onValueChange = { odometerStr = it },
                     label = { Text("Quilometragem Atual (Odom.) *") },
+                    isError = odometerStr.isNotEmpty() && !isOdometerValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1354,6 +1426,7 @@ fun FuelScreenContent(viewModel: MainViewModel) {
                             Toast.makeText(context, "Preencha todos os dados corretamente (*)", Toast.LENGTH_SHORT).show()
                         }
                     },
+                    enabled = isFuelFormValid,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Salvar Abastecimento")
@@ -1391,7 +1464,7 @@ fun FuelScreenContent(viewModel: MainViewModel) {
 // TELA 4: CONTROLE DE DESPESAS (Com aba Combustível)
 // =====================================================
 @Composable
-fun ExpensesScreen(viewModel: MainViewModel) {
+fun ExpensesScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Unit = {}) {
     var selectedTab by remember { mutableStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1420,15 +1493,15 @@ fun ExpensesScreen(viewModel: MainViewModel) {
                 .padding(16.dp)
         ) {
             when (selectedTab) {
-                0 -> GeneralExpensesScreenContent(viewModel)
-                1 -> FuelScreenContent(viewModel)
+                0 -> GeneralExpensesScreenContent(viewModel, onFormDirtyChange)
+                1 -> FuelScreenContent(viewModel, onFormDirtyChange)
             }
         }
     }
 }
 
 @Composable
-fun GeneralExpensesScreenContent(viewModel: MainViewModel) {
+fun GeneralExpensesScreenContent(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Unit = {}) {
     val expenses by viewModel.expenses.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -1442,6 +1515,14 @@ fun GeneralExpensesScreenContent(viewModel: MainViewModel) {
         "Freios", "Embreagem", "Oficina", "Lavagem", "Seguro", "IPVA", 
         "Licenciamento", "Multas", "Outros"
     )
+
+    // Track dirty state of the form
+    LaunchedEffect(valueStr, notes) {
+        val dirty = valueStr.isNotEmpty() || notes.isNotEmpty()
+        onFormDirtyChange(dirty)
+    }
+
+    val isValueValid = valueStr.replace(',', '.').toDoubleOrNull()?.let { it > 0 } ?: false
 
     Column(
         modifier = Modifier
@@ -1460,6 +1541,7 @@ fun GeneralExpensesScreenContent(viewModel: MainViewModel) {
                     value = valueStr,
                     onValueChange = { valueStr = it },
                     label = { Text("Valor (R$) *") },
+                    isError = valueStr.isNotEmpty() && !isValueValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1498,6 +1580,7 @@ fun GeneralExpensesScreenContent(viewModel: MainViewModel) {
                             Toast.makeText(context, "Preencha um valor válido", Toast.LENGTH_SHORT).show()
                         }
                     },
+                    enabled = isValueValid,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Salvar Despesa")
@@ -1537,7 +1620,7 @@ fun GeneralExpensesScreenContent(viewModel: MainViewModel) {
 // TELA 5: CONTROLE DE MANUTENÇÃO (With proximity warnings)
 // =====================================================
 @Composable
-fun MaintenanceScreen(viewModel: MainViewModel) {
+fun MaintenanceScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Unit = {}) {
     val maintenances by viewModel.maintenances.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -1548,6 +1631,17 @@ fun MaintenanceScreen(viewModel: MainViewModel) {
     var notes by remember { mutableStateOf("") }
 
     val items = listOf("Troca de óleo", "Filtro", "Vela", "Corrente", "Coroa", "Pinhão", "Freios", "Embreagem", "Bateria", "Pneu dianteiro", "Pneu trasei.", "Outros")
+
+    // Track dirty state of the form
+    LaunchedEffect(currentOdomStr, nextOdomStr, costStr, notes) {
+        val dirty = currentOdomStr.isNotEmpty() || nextOdomStr.isNotEmpty() || costStr.isNotEmpty() || notes.isNotEmpty()
+        onFormDirtyChange(dirty)
+    }
+
+    val isCurrentOdomValid = currentOdomStr.replace(',', '.').toDoubleOrNull()?.let { it >= 0 } ?: false
+    val isNextOdomValid = nextOdomStr.replace(',', '.').toDoubleOrNull()?.let { it > 0 } ?: false
+    val isCostValid = costStr.replace(',', '.').toDoubleOrNull()?.let { it >= 0 } ?: false
+    val isMaintenanceFormValid = isCurrentOdomValid && isNextOdomValid && isCostValid
 
     Column(
         modifier = Modifier
@@ -1609,6 +1703,7 @@ fun MaintenanceScreen(viewModel: MainViewModel) {
                         value = currentOdomStr,
                         onValueChange = { currentOdomStr = it },
                         label = { Text("Odom. Atual (km) *") },
+                        isError = currentOdomStr.isNotEmpty() && !isCurrentOdomValid,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -1616,6 +1711,7 @@ fun MaintenanceScreen(viewModel: MainViewModel) {
                         value = nextOdomStr,
                         onValueChange = { nextOdomStr = it },
                         label = { Text("Próx. Km (Aviso) *") },
+                        isError = nextOdomStr.isNotEmpty() && !isNextOdomValid,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -1625,6 +1721,7 @@ fun MaintenanceScreen(viewModel: MainViewModel) {
                     value = costStr,
                     onValueChange = { costStr = it },
                     label = { Text("Custo Manutenção (R$) *") },
+                    isError = costStr.isNotEmpty() && !isCostValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1653,6 +1750,7 @@ fun MaintenanceScreen(viewModel: MainViewModel) {
                             Toast.makeText(context, "Preencha todos os dados corretamente", Toast.LENGTH_SHORT).show()
                         }
                     },
+                    enabled = isMaintenanceFormValid,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Salvar Manutenção")
@@ -2117,7 +2215,7 @@ fun PartnerReportScreen(viewModel: MainViewModel) {
 // TELA 10: CONFIGURAÇÕES DO APLICATIVO
 // =====================================================
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Unit = {}) {
     val name by viewModel.motoboyName.collectAsStateWithLifecycle()
     val phone by viewModel.motoboyPhone.collectAsStateWithLifecycle()
     val darkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
@@ -2127,6 +2225,21 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     var editName by remember { mutableStateOf(name) }
     var editPhone by remember { mutableStateOf(phone) }
+
+    // Synchronize local edit fields when state updates from ViewModel (e.g. database loading or backup restore)
+    LaunchedEffect(name, phone) {
+        editName = name
+        editPhone = phone
+    }
+
+    // Track dirty state of the form
+    LaunchedEffect(editName, editPhone, name, phone) {
+        val dirty = (editName != name && editName.isNotEmpty()) || (editPhone != phone && editPhone.isNotEmpty())
+        onFormDirtyChange(dirty)
+    }
+
+    val isProfileValid = editName.isNotBlank() && editPhone.isNotBlank()
+    val hasChanges = editName != name || editPhone != phone
 
     val photoLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
@@ -2199,16 +2312,35 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 OutlinedTextField(
                     value = editName,
                     onValueChange = { editName = it },
-                    label = { Text("Nome do Motoboy") },
+                    label = { Text("Nome do Motoboy *") },
+                    isError = editName.isNotEmpty() && editName.isBlank(),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
                     value = editPhone,
                     onValueChange = { editPhone = it },
-                    label = { Text("Telefone / WhatsApp") },
+                    label = { Text("Telefone / WhatsApp *") },
+                    isError = editPhone.isNotEmpty() && editPhone.isBlank(),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Button(
+                    onClick = {
+                        if (isProfileValid) {
+                            viewModel.updateSettings(editName, editPhone, darkTheme, autoTheme, photoUri)
+                            Toast.makeText(context, "Perfil atualizado com sucesso!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = isProfileValid && hasChanges,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Save, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Salvar Perfil")
+                }
             }
         }
 
@@ -2234,26 +2366,36 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                 Button(
                     onClick = {
-                        viewModel.triggerBackup()
-                        Toast.makeText(context, "Sincronização com Firestore bem-sucedida!", Toast.LENGTH_SHORT).show()
+                        viewModel.triggerBackup(context) { success, msg ->
+                            if (success) {
+                                Toast.makeText(context, "Backup offline realizado com sucesso! Arquivo: $msg", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Erro ao realizar backup: $msg", Toast.LENGTH_LONG).show()
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Filled.Backup, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Fazer Backup na Nuvem")
+                    Text("Fazer Backup Offline (JSON)")
                 }
 
                 OutlinedButton(
                     onClick = {
-                        viewModel.triggerRestore()
-                        Toast.makeText(context, "Dados restaurados localmente do SQLite!", Toast.LENGTH_SHORT).show()
+                        viewModel.triggerRestore(context) { success, msg ->
+                            if (success) {
+                                Toast.makeText(context, "Backup restaurado com sucesso!", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Erro ao restaurar backup: $msg", Toast.LENGTH_LONG).show()
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Filled.Restore, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Restaurar Backup")
+                    Text("Restaurar Backup Offline (JSON)")
                 }
             }
         }
@@ -2468,90 +2610,102 @@ fun exportEstablishmentReportToPdf(
     estStats: List<com.example.ui.EstablishmentStats>
 ) {
     val fileName = "motobox_relatorio_parceiro_${System.currentTimeMillis()}.pdf"
-    val resultUri = saveFileToDownloads(context, fileName, "application/pdf") { outputStream ->
-        val pdfDocument = PdfDocument()
-        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-        val page = pdfDocument.startPage(pageInfo)
-        val canvas = page.canvas
-        
-        val titlePaint = Paint().apply {
-            color = AndroidColor.parseColor("#aa00fa")
-            textSize = 20f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            isAntiAlias = true
-        }
-        val headerPaint = Paint().apply {
-            color = AndroidColor.DKGRAY
-            textSize = 11f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            isAntiAlias = true
-        }
-        val textPaint = Paint().apply {
-            color = AndroidColor.BLACK
-            textSize = 10f
-            isAntiAlias = true
-        }
-        val linePaint = Paint().apply {
-            color = AndroidColor.LTGRAY
-            strokeWidth = 1f
-        }
-        
-        var y = 50f
-        canvas.drawText("MOTOBOX FINANCE", 40f, y, titlePaint)
-        y += 25f
-        
-        canvas.drawText("Relatório de Entregas por Estabelecimento", 40f, y, textPaint.apply { textSize = 11f; typeface = Typeface.DEFAULT_BOLD })
-        y += 15f
-        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-        canvas.drawText("Emissão: ${sdf.format(Date())}", 40f, y, textPaint.apply { textSize = 9f; typeface = Typeface.DEFAULT })
-        y += 30f
-        
-        canvas.drawLine(40f, y, 555f, y, linePaint)
-        y += 20f
-        
-        if (selectedEst == "Todos") {
-            canvas.drawText("Resumo de Todos os Estabelecimentos", 40f, y, headerPaint)
+    val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
+    if (!documentsDir.exists()) {
+        documentsDir.mkdirs()
+    }
+    val file = File(documentsDir, fileName)
+
+    try {
+        FileOutputStream(file).use { outputStream ->
+            val pdfDocument = PdfDocument()
+            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            
+            val titlePaint = Paint().apply {
+                color = AndroidColor.parseColor("#aa00fa")
+                textSize = 20f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                isAntiAlias = true
+            }
+            val headerPaint = Paint().apply {
+                color = AndroidColor.DKGRAY
+                textSize = 11f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                isAntiAlias = true
+            }
+            val textPaint = Paint().apply {
+                color = AndroidColor.BLACK
+                textSize = 10f
+                isAntiAlias = true
+            }
+            val linePaint = Paint().apply {
+                color = AndroidColor.LTGRAY
+                strokeWidth = 1f
+            }
+            
+            var y = 50f
+            canvas.drawText("MOTOBOX FINANCE", 40f, y, titlePaint)
             y += 25f
             
-            estStats.forEach { item ->
-                canvas.drawText(item.name, 40f, y, textPaint)
-                canvas.drawText("${item.deliveriesCount} entregas | R$ %.2f".format(item.totalEarnings), 350f, y, textPaint)
-                y += 20f
-                canvas.drawLine(40f, y, 555f, y, Paint().apply { color = AndroidColor.parseColor("#EEEEEE") })
-                y += 5f
-            }
-        } else {
-            val est = estStats.find { it.name == selectedEst }
-            if (est != null) {
-                canvas.drawText("Estabelecimento: ${est.name}", 40f, y, headerPaint)
+            canvas.drawText("Relatório de Entregas por Estabelecimento", 40f, y, textPaint.apply { textSize = 11f; typeface = Typeface.DEFAULT_BOLD })
+            y += 15f
+            val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+            canvas.drawText("Emissão: ${sdf.format(Date())}", 40f, y, textPaint.apply { textSize = 9f; typeface = Typeface.DEFAULT })
+            y += 30f
+            
+            canvas.drawLine(40f, y, 555f, y, linePaint)
+            y += 20f
+            
+            if (selectedEst == "Todos") {
+                canvas.drawText("Resumo de Todos os Estabelecimentos", 40f, y, headerPaint)
                 y += 25f
-                canvas.drawText("Quantidade total de entregas: ${est.deliveriesCount}", 40f, y, textPaint)
-                y += 20f
-                canvas.drawText("Valor total recebido: R$ %.2f".format(est.totalEarnings), 40f, y, textPaint)
-                y += 20f
-                canvas.drawText("Última entrega cadastrada: ${est.lastDelivery}", 40f, y, textPaint)
-                y += 25f
+                
+                estStats.forEach { item ->
+                    canvas.drawText(item.name, 40f, y, textPaint)
+                    canvas.drawText("${item.deliveriesCount} entregas | R$ %.2f".format(item.totalEarnings), 350f, y, textPaint)
+                    y += 20f
+                    canvas.drawLine(40f, y, 555f, y, Paint().apply { color = AndroidColor.parseColor("#EEEEEE") })
+                    y += 5f
+                }
+            } else {
+                val est = estStats.find { it.name == selectedEst }
+                if (est != null) {
+                    canvas.drawText("Estabelecimento: ${est.name}", 40f, y, headerPaint)
+                    y += 25f
+                    canvas.drawText("Quantidade total de entregas: ${est.deliveriesCount}", 40f, y, textPaint)
+                    y += 20f
+                    canvas.drawText("Valor total recebido: R$ %.2f".format(est.totalEarnings), 40f, y, textPaint)
+                    y += 20f
+                    canvas.drawText("Última entrega cadastrada: ${est.lastDelivery}", 40f, y, textPaint)
+                    y += 25f
+                }
             }
+            
+            y += 10f
+            canvas.drawLine(40f, y, 555f, y, linePaint)
+            y += 20f
+            
+            val totalEnt = if (selectedEst == "Todos") estStats.sumOf { it.deliveriesCount } else estStats.find { it.name == selectedEst }?.deliveriesCount ?: 0
+            val totalRec = if (selectedEst == "Todos") estStats.sumOf { it.totalEarnings } else estStats.find { it.name == selectedEst }?.totalEarnings ?: 0.0
+            
+            canvas.drawText("TOTAL DE ENTREGAS: $totalEnt", 40f, y, headerPaint)
+            y += 20f
+            canvas.drawText("TOTAL RECEBIDO: R$ %.2f".format(totalRec), 40f, y, headerPaint.apply { color = AndroidColor.parseColor("#aa00fa") })
+            
+            pdfDocument.finishPage(page)
+            pdfDocument.writeTo(outputStream)
+            pdfDocument.close()
         }
+
+        val authority = "${context.packageName}.fileprovider"
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
+        Toast.makeText(context, "PDF gerado com sucesso!", Toast.LENGTH_LONG).show()
         
-        y += 10f
-        canvas.drawLine(40f, y, 555f, y, linePaint)
-        y += 20f
-        
-        val totalEnt = if (selectedEst == "Todos") estStats.sumOf { it.deliveriesCount } else estStats.find { it.name == selectedEst }?.deliveriesCount ?: 0
-        val totalRec = if (selectedEst == "Todos") estStats.sumOf { it.totalEarnings } else estStats.find { it.name == selectedEst }?.totalEarnings ?: 0.0
-        
-        canvas.drawText("TOTAL DE ENTREGAS: $totalEnt", 40f, y, headerPaint)
-        y += 20f
-        canvas.drawText("TOTAL RECEBIDO: R$ %.2f".format(totalRec), 40f, y, headerPaint.apply { color = AndroidColor.parseColor("#aa00fa") })
-        
-        pdfDocument.finishPage(page)
-        pdfDocument.writeTo(outputStream)
-        pdfDocument.close()
-    }
-    if (resultUri != null) {
-        Toast.makeText(context, "PDF do parceiro exportado para Downloads!", Toast.LENGTH_LONG).show()
-    } else {
+        ExportHelpers.openFile(context, uri, "application/pdf")
+    } catch (e: Exception) {
+        Log.e("MainActivity", "Erro ao gerar PDF do estabelecimento", e)
         Toast.makeText(context, "Falha ao gerar PDF do parceiro.", Toast.LENGTH_SHORT).show()
     }
 }
@@ -2563,6 +2717,8 @@ fun ExportarRelatorioScreen(viewModel: MainViewModel) {
     val deliveries by viewModel.deliveries.collectAsStateWithLifecycle()
     val establishments by viewModel.establishments.collectAsStateWithLifecycle()
     val motoboyName by viewModel.motoboyName.collectAsStateWithLifecycle()
+    val motoboyPhone by viewModel.motoboyPhone.collectAsStateWithLifecycle()
+    val motoboyCity by viewModel.motoboyCity.collectAsStateWithLifecycle()
 
     var period by remember { mutableStateOf("Hoje") }
     val periods = listOf("Hoje", "Ontem", "Esta semana", "Este mês", "Personalizado")
@@ -2847,7 +3003,9 @@ fun ExportarRelatorioScreen(viewModel: MainViewModel) {
                                     customStart = customStart,
                                     customEnd = customEnd,
                                     selectedEstName = estFilter,
-                                    motoboyName = motoboyName
+                                    motoboyName = motoboyName,
+                                    motoboyPhone = motoboyPhone,
+                                    motoboyCity = motoboyCity
                                 )
                                 if (uri != null) {
                                     exportResultUri = uri

@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import java.io.File
+import org.json.JSONObject
+import org.json.JSONArray
 
 enum class Screen {
     Dashboard,
@@ -59,6 +62,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _motoboyPhotoUri = MutableStateFlow(sharedPrefs.getString("motoboy_photo_uri", "") ?: "")
     val motoboyPhotoUri: StateFlow<String> = _motoboyPhotoUri.asStateFlow()
 
+    private val _motoboyCity = MutableStateFlow(sharedPrefs.getString("motoboy_city", "São Paulo") ?: "São Paulo")
+    val motoboyCity: StateFlow<String> = _motoboyCity.asStateFlow()
+
+    private val _motoboyMotoModel = MutableStateFlow(sharedPrefs.getString("motoboy_moto_model", "Honda CG 160 Titan") ?: "Honda CG 160 Titan")
+    val motoboyMotoModel: StateFlow<String> = _motoboyMotoModel.asStateFlow()
+
+    private val _motoboyMotoYear = MutableStateFlow(sharedPrefs.getInt("motoboy_moto_year", 2023))
+    val motoboyMotoYear: StateFlow<Int> = _motoboyMotoYear.asStateFlow()
+
+    private val _motoboyMotoOdometer = MutableStateFlow(sharedPrefs.getFloat("motoboy_moto_odometer", 12500f))
+    val motoboyMotoOdometer: StateFlow<Float> = _motoboyMotoOdometer.asStateFlow()
+
+    // Active motorcycle selection logic (Fixes Task 5 Coroutine Leak)
+    private var motorcycleJob: kotlinx.coroutines.Job? = null
+    private val _selectedMotorcycleId = MutableStateFlow<Int?>(null)
+    val selectedMotorcycleId = _selectedMotorcycleId.asStateFlow()
+
+    private val _selectedMotorcycleMaintenances = MutableStateFlow<List<Maintenance>>(emptyList())
+    val selectedMotorcycleMaintenances = _selectedMotorcycleMaintenances.asStateFlow()
+
+    private val _selectedMotorcycleFuelLogs = MutableStateFlow<List<FuelLog>>(emptyList())
+    val selectedMotorcycleFuelLogs = _selectedMotorcycleFuelLogs.asStateFlow()
+
+    fun selectMotorcycle(motorcycleId: Int) {
+        // Cancel the previous active coroutine/job to avoid parallel collectors leak
+        motorcycleJob?.cancel()
+        _selectedMotorcycleId.value = motorcycleId
+
+        motorcycleJob = viewModelScope.launch {
+            // Collect maintenance and fuel flows safely
+            launch {
+                repository.allMaintenances.collect { list ->
+                    _selectedMotorcycleMaintenances.value = list
+                }
+            }
+            launch {
+                repository.allFuelLogs.collect { list ->
+                    _selectedMotorcycleFuelLogs.value = list
+                }
+            }
+        }
+    }
+
     // Voice Command State
     private val _voiceProcessing = MutableStateFlow(false)
     val voiceProcessing: StateFlow<Boolean> = _voiceProcessing.asStateFlow()
@@ -83,8 +129,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Settings Updates
     fun updateSettings(name: String, phone: String, darkTheme: Boolean, autoTheme: Boolean, photoUri: String = _motoboyPhotoUri.value) {
+        updateSettings(
+            name = name,
+            phone = phone,
+            city = _motoboyCity.value,
+            motoModel = _motoboyMotoModel.value,
+            motoYear = _motoboyMotoYear.value,
+            motoOdometer = _motoboyMotoOdometer.value,
+            darkTheme = darkTheme,
+            autoTheme = autoTheme,
+            photoUri = photoUri
+        )
+    }
+
+    fun updateSettings(
+        name: String,
+        phone: String,
+        city: String,
+        motoModel: String,
+        motoYear: Int,
+        motoOdometer: Float,
+        darkTheme: Boolean,
+        autoTheme: Boolean,
+        photoUri: String = _motoboyPhotoUri.value
+    ) {
         _motoboyName.value = name
         _motoboyPhone.value = phone
+        _motoboyCity.value = city
+        _motoboyMotoModel.value = motoModel
+        _motoboyMotoYear.value = motoYear
+        _motoboyMotoOdometer.value = motoOdometer
         _isDarkTheme.value = darkTheme
         _useAutoTheme.value = autoTheme
         _motoboyPhotoUri.value = photoUri
@@ -92,6 +166,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sharedPrefs.edit().apply {
             putString("motoboy_name", name)
             putString("motoboy_phone", phone)
+            putString("motoboy_city", city)
+            putString("motoboy_moto_model", motoModel)
+            putInt("motoboy_moto_year", motoYear)
+            putFloat("motoboy_moto_odometer", motoOdometer)
             putBoolean("is_dark_theme", darkTheme)
             putBoolean("use_auto_theme", autoTheme)
             putString("motoboy_photo_uri", photoUri)
@@ -310,22 +388,271 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteExpense(exp: Expense) = viewModelScope.launch { repository.deleteExpense(exp) }
     fun deleteMaintenance(m: Maintenance) = viewModelScope.launch { repository.deleteMaintenance(m) }
 
-    // Backup & Restore
-    fun triggerBackup() {
-        // Offline SQLite auto backups are enabled, Firebase cloud sync mock is executed.
+    // Backup & Restore (Real Local JSON Implementation)
+    fun triggerBackup(context: Context, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            // Emulate cloud backup sync
-            _voiceProcessing.value = true
-            kotlinx.coroutines.delay(1200)
-            _voiceProcessing.value = false
+            try {
+                val backupObj = JSONObject()
+                
+                // 1. Profile data
+                val profileObj = JSONObject().apply {
+                    put("name", _motoboyName.value)
+                    put("phone", _motoboyPhone.value)
+                    put("city", _motoboyCity.value)
+                    put("moto_model", _motoboyMotoModel.value)
+                    put("moto_year", _motoboyMotoYear.value)
+                    put("moto_odometer", _motoboyMotoOdometer.value.toDouble())
+                    put("photo_uri", _motoboyPhotoUri.value)
+                }
+                backupObj.put("profile", profileObj)
+
+                // 2. Deliveries
+                val delList = repository.allDeliveries.first()
+                val delArray = JSONArray()
+                delList.forEach { d ->
+                    delArray.put(JSONObject().apply {
+                        put("date", d.date)
+                        put("time", d.time)
+                        put("establishmentId", d.establishmentId)
+                        put("establishmentName", d.establishmentName)
+                        put("clientName", d.clientName ?: JSONObject.NULL)
+                        put("neighborhood", d.neighborhood)
+                        put("city", d.city)
+                        put("value", d.value)
+                        put("paymentMethod", d.paymentMethod)
+                        put("distanceKm", d.distanceKm)
+                        put("deliveryTimeMinutes", d.deliveryTimeMinutes ?: JSONObject.NULL)
+                        put("notes", d.notes)
+                        put("quantity", d.quantity)
+                        put("feePerDelivery", d.feePerDelivery)
+                        put("feeFartherDeliveries", d.feeFartherDeliveries)
+                    })
+                }
+                backupObj.put("deliveries", delArray)
+
+                // 3. Establishments
+                val estList = repository.allEstablishments.first()
+                val estArray = JSONArray()
+                estList.forEach { e ->
+                    estArray.put(JSONObject().apply {
+                        put("id", e.id)
+                        put("name", e.name)
+                        put("address", e.address)
+                        put("neighborhood", e.neighborhood)
+                        put("city", e.city)
+                        put("phone", e.phone)
+                        put("contact", e.contact)
+                        put("notes", e.notes)
+                        put("createdAt", e.createdAt)
+                    })
+                }
+                backupObj.put("establishments", estArray)
+
+                // 4. Fuel Logs
+                val fuelList = repository.allFuelLogs.first()
+                val fuelArray = JSONArray()
+                fuelList.forEach { f ->
+                    fuelArray.put(JSONObject().apply {
+                        put("date", f.date)
+                        put("gasStation", f.gasStation)
+                        put("totalAmount", f.totalAmount)
+                        put("liters", f.liters)
+                        put("odometer", f.odometer)
+                    })
+                }
+                backupObj.put("fuel_logs", fuelArray)
+
+                // 5. Expenses
+                val expList = repository.allExpenses.first()
+                val expArray = JSONArray()
+                expList.forEach { ex ->
+                    expArray.put(JSONObject().apply {
+                        put("date", ex.date)
+                        put("category", ex.category)
+                        put("value", ex.value)
+                        put("notes", ex.notes)
+                    })
+                }
+                backupObj.put("expenses", expArray)
+
+                // 6. Maintenances
+                val maintList = repository.allMaintenances.first()
+                val maintArray = JSONArray()
+                maintList.forEach { m ->
+                    maintArray.put(JSONObject().apply {
+                        put("item", m.item)
+                        put("date", m.date)
+                        put("currentOdometer", m.currentOdometer)
+                        put("cost", m.cost)
+                        put("nextOdometer", m.nextOdometer)
+                        put("notes", m.notes)
+                    })
+                }
+                backupObj.put("maintenances", maintArray)
+
+                // 7. Goals
+                val goalList = repository.allGoals.first()
+                val goalArray = JSONArray()
+                goalList.forEach { g ->
+                    goalArray.put(JSONObject().apply {
+                        put("type", g.type)
+                        put("targetValue", g.targetValue)
+                    })
+                }
+                backupObj.put("goals", goalArray)
+
+                // Save to app external storage
+                val backupFile = File(context.getExternalFilesDir(null), "motogestor_backup.json")
+                backupFile.writeText(backupObj.toString(2))
+                
+                onResult(true, backupFile.name)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Erro ao fazer backup", e)
+                onResult(false, e.localizedMessage ?: "Erro desconhecido")
+            }
         }
     }
 
-    fun triggerRestore() {
+    fun triggerRestore(context: Context, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            _voiceProcessing.value = true
-            kotlinx.coroutines.delay(1200)
-            _voiceProcessing.value = false
+            try {
+                val backupFile = File(context.getExternalFilesDir(null), "motogestor_backup.json")
+                if (!backupFile.exists()) {
+                    onResult(false, "Nenhum arquivo de backup encontrado.")
+                    return@launch
+                }
+
+                val jsonString = backupFile.readText()
+                val backupObj = JSONObject(jsonString)
+
+                // Clear existing data from Room database safely
+                database.clearAllTables()
+
+                // Restore Profile
+                if (backupObj.has("profile")) {
+                    val p = backupObj.getJSONObject("profile")
+                    val name = p.optString("name", "Motoboy Parceiro")
+                    val phone = p.optString("phone", "")
+                    val city = p.optString("city", "São Paulo")
+                    val motoModel = p.optString("moto_model", "Honda CG 160 Titan")
+                    val motoYear = p.optInt("moto_year", 2023)
+                    val motoOdo = p.optDouble("moto_odometer", 12500.0).toFloat()
+                    val photoUri = p.optString("photo_uri", "")
+                    updateSettings(name, phone, city, motoModel, motoYear, motoOdo, _isDarkTheme.value, _useAutoTheme.value, photoUri)
+                }
+
+                // Restore Establishments
+                if (backupObj.has("establishments")) {
+                    val estArray = backupObj.getJSONArray("establishments")
+                    for (i in 0 until estArray.length()) {
+                        val e = estArray.getJSONObject(i)
+                        val est = Establishment(
+                            id = e.optInt("id", 0),
+                            name = e.getString("name"),
+                            address = e.optString("address", ""),
+                            neighborhood = e.optString("neighborhood", ""),
+                            city = e.optString("city", ""),
+                            phone = e.optString("phone", ""),
+                            contact = e.optString("contact", ""),
+                            notes = e.optString("notes", ""),
+                            createdAt = e.optLong("createdAt", System.currentTimeMillis())
+                        )
+                        repository.insertEstablishment(est)
+                    }
+                }
+
+                // Restore Deliveries
+                if (backupObj.has("deliveries")) {
+                    val delArray = backupObj.getJSONArray("deliveries")
+                    for (i in 0 until delArray.length()) {
+                        val d = delArray.getJSONObject(i)
+                        val del = Delivery(
+                            date = d.getLong("date"),
+                            time = d.getString("time"),
+                            establishmentId = d.getInt("establishmentId"),
+                            establishmentName = d.getString("establishmentName"),
+                            clientName = if (d.isNull("clientName")) null else d.getString("clientName"),
+                            neighborhood = d.getString("neighborhood"),
+                            city = d.getString("city"),
+                            value = d.getDouble("value"),
+                            paymentMethod = d.getString("paymentMethod"),
+                            distanceKm = d.getDouble("distanceKm"),
+                            deliveryTimeMinutes = if (d.isNull("deliveryTimeMinutes")) null else d.getInt("deliveryTimeMinutes"),
+                            notes = d.optString("notes", ""),
+                            quantity = d.optInt("quantity", 1),
+                            feePerDelivery = d.optDouble("feePerDelivery", 0.0),
+                            feeFartherDeliveries = d.optDouble("feeFartherDeliveries", 0.0)
+                        )
+                        repository.insertDelivery(del)
+                    }
+                }
+
+                // Restore Fuel Logs
+                if (backupObj.has("fuel_logs")) {
+                    val fuelArray = backupObj.getJSONArray("fuel_logs")
+                    for (i in 0 until fuelArray.length()) {
+                        val f = fuelArray.getJSONObject(i)
+                        val fuel = FuelLog(
+                            date = f.getLong("date"),
+                            gasStation = f.getString("gasStation"),
+                            totalAmount = f.getDouble("totalAmount"),
+                            liters = f.getDouble("liters"),
+                            odometer = f.getDouble("odometer")
+                        )
+                        repository.insertFuelLog(fuel)
+                    }
+                }
+
+                // Restore Expenses
+                if (backupObj.has("expenses")) {
+                    val expArray = backupObj.getJSONArray("expenses")
+                    for (i in 0 until expArray.length()) {
+                        val ex = expArray.getJSONObject(i)
+                        val exp = Expense(
+                            date = ex.getLong("date"),
+                            category = ex.getString("category"),
+                            value = ex.getDouble("value"),
+                            notes = ex.optString("notes", "")
+                        )
+                        repository.insertExpense(exp)
+                    }
+                }
+
+                // Restore Maintenances
+                if (backupObj.has("maintenances")) {
+                    val maintArray = backupObj.getJSONArray("maintenances")
+                    for (i in 0 until maintArray.length()) {
+                        val m = maintArray.getJSONObject(i)
+                        val maint = Maintenance(
+                            item = m.getString("item"),
+                            date = m.getLong("date"),
+                            currentOdometer = m.getDouble("currentOdometer"),
+                            cost = m.getDouble("cost"),
+                            nextOdometer = m.getDouble("nextOdometer"),
+                            notes = m.optString("notes", "")
+                        )
+                        repository.insertMaintenance(maint)
+                    }
+                }
+
+                // Restore Goals
+                if (backupObj.has("goals")) {
+                    val goalArray = backupObj.getJSONArray("goals")
+                    for (i in 0 until goalArray.length()) {
+                        val g = goalArray.getJSONObject(i)
+                        val goal = Goal(
+                            type = g.getString("type"),
+                            targetValue = g.getDouble("targetValue")
+                        )
+                        repository.insertGoal(goal)
+                    }
+                }
+
+                onResult(true, backupFile.name)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Erro ao restaurar backup", e)
+                onResult(false, e.localizedMessage ?: "Erro desconhecido")
+            }
         }
     }
 
