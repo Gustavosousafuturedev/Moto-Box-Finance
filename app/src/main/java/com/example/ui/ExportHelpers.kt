@@ -292,12 +292,10 @@ object ExportHelpers {
 
                 // Table Header positions
                 val xData = 40f
-                val xHora = 95f
-                val xEstab = 135f
-                val xBairro = 255f
-                val xCidade = 345f
-                val xValor = 425f
-                val xPagam = 485f
+                val xHora = 100f
+                val xEstab = 150f
+                val xBairro = 310f
+                val xCidade = 430f
 
                 var y = 185f
 
@@ -307,8 +305,6 @@ object ExportHelpers {
                 canvas.drawText("Estabelecimento", xEstab, y, tableHeaderPaint)
                 canvas.drawText("Bairro", xBairro, y, tableHeaderPaint)
                 canvas.drawText("Cidade", xCidade, y, tableHeaderPaint)
-                canvas.drawText("Valor", xValor, y, tableHeaderPaint)
-                canvas.drawText("Forma Pag.", xPagam, y, tableHeaderPaint)
 
                 y += 8f
                 canvas.drawLine(40f, y, 555f, y, Paint(linePaint).apply { strokeWidth = 1.5f })
@@ -336,8 +332,6 @@ object ExportHelpers {
                             canvas.drawText("Estabelecimento", xEstab, y, tableHeaderPaint)
                             canvas.drawText("Bairro", xBairro, y, tableHeaderPaint)
                             canvas.drawText("Cidade", xCidade, y, tableHeaderPaint)
-                            canvas.drawText("Valor", xValor, y, tableHeaderPaint)
-                            canvas.drawText("Forma Pag.", xPagam, y, tableHeaderPaint)
 
                             y += 8f
                             canvas.drawLine(40f, y, 555f, y, Paint(linePaint).apply { strokeWidth = 1.5f })
@@ -353,17 +347,14 @@ object ExportHelpers {
                         canvas.drawText(dateStr, xData, y, normalPaint)
                         canvas.drawText(d.time, xHora, y, normalPaint)
 
-                        val estTrunc = if (d.establishmentName.length > 20) d.establishmentName.take(18) + ".." else d.establishmentName
+                        val estTrunc = if (d.establishmentName.length > 22) d.establishmentName.take(20) + ".." else d.establishmentName
                         canvas.drawText(estTrunc, xEstab, y, normalPaint)
 
-                        val neighborhoodTrunc = if (d.neighborhood.length > 15) d.neighborhood.take(13) + ".." else d.neighborhood
+                        val neighborhoodTrunc = if (d.neighborhood.length > 18) d.neighborhood.take(16) + ".." else d.neighborhood
                         canvas.drawText(neighborhoodTrunc, xBairro, y, normalPaint)
 
-                        val cityTrunc = if (d.city.length > 13) d.city.take(11) + ".." else d.city
+                        val cityTrunc = if (d.city.length > 18) d.city.take(16) + ".." else d.city
                         canvas.drawText(cityTrunc, xCidade, y, normalPaint)
-
-                        canvas.drawText("R$ %.2f".format(d.value), xValor, y, boldPaint)
-                        canvas.drawText(d.paymentMethod, xPagam, y, normalPaint)
 
                         y += 8f
                         canvas.drawLine(40f, y, 555f, y, Paint().apply { color = borderGray; strokeWidth = 0.5f })
@@ -382,17 +373,13 @@ object ExportHelpers {
                 }
 
                 val totalCount = deliveries.sumOf { it.quantity }
-                val totalEarnings = deliveries.sumOf { it.value }
-                val averageEarning = if (totalCount > 0) totalEarnings / totalCount else 0.0
 
-                canvas.drawRoundRect(40f, y, 555f, y + 60f, 6f, 6f, Paint().apply { color = lightBgColor })
+                canvas.drawRoundRect(40f, y, 555f, y + 50f, 6f, 6f, Paint().apply { color = lightBgColor })
                 
                 val totalPaintText = Paint(normalPaint).apply { textSize = 11f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); color = brandColor }
-                canvas.drawText("Total de Entregas: $totalCount", 55f, y + 25f, totalPaintText)
-                canvas.drawText("Valor Bruto: R$ %.2f".format(totalEarnings), 210f, y + 25f, totalPaintText)
-                canvas.drawText("Valor Médio: R$ %.2f".format(averageEarning), 380f, y + 25f, totalPaintText)
+                canvas.drawText("Total de Entregas: $totalCount", 55f, y + 22f, totalPaintText)
                 
-                canvas.drawText("Relatório financeiro gerado com segurança através do NuCorre.", 55f, y + 48f, subtitlePaint.apply { textSize = 8.5f })
+                canvas.drawText("Relatório de entregas gerado com segurança através do NuCorre.", 55f, y + 38f, subtitlePaint.apply { textSize = 8.5f })
 
                 pdfDocument.finishPage(page)
 
@@ -414,7 +401,7 @@ object ExportHelpers {
                     }
 
                     sumCanvas.drawText("RESUMO POR ESTABELECIMENTO", 100f, 58f, titlePaint)
-                    sumCanvas.drawText("NuCorre • Total Geral de Ganhos Consolidados", 100f, 74f, subtitlePaint)
+                    sumCanvas.drawText("NuCorre • Total Geral de Entregas Consolidadas", 100f, 74f, subtitlePaint)
                     sumCanvas.drawLine(40f, 100f, 555f, 100f, linePaint)
 
                     // Info block
@@ -427,8 +414,7 @@ object ExportHelpers {
 
                     var sumY = 180f
                     sumCanvas.drawText("Estabelecimento", 40f, sumY, tableHeaderPaint.apply { textSize = 11f })
-                    sumCanvas.drawText("Quantidade de Entregas", 280f, sumY, tableHeaderPaint)
-                    sumCanvas.drawText("Valor Total", 450f, sumY, tableHeaderPaint)
+                    sumCanvas.drawText("Quantidade de Entregas", 330f, sumY, tableHeaderPaint)
 
                     sumY += 8f
                     sumCanvas.drawLine(40f, sumY, 555f, sumY, Paint(linePaint).apply { strokeWidth = 1.5f })
@@ -452,8 +438,7 @@ object ExportHelpers {
                         }
 
                         sumCanvas.drawText(estName, 40f, sumY, normalPaint.apply { textSize = 11f })
-                        sumCanvas.drawText(list.sumOf { it.quantity }.toString(), 280f, sumY, boldPaint.apply { textSize = 11f })
-                        sumCanvas.drawText("R$ %.2f".format(list.sumOf { it.value }), 450f, sumY, boldPaint)
+                        sumCanvas.drawText(list.sumOf { it.quantity }.toString(), 330f, sumY, boldPaint.apply { textSize = 11f })
 
                         sumY += 10f
                         sumCanvas.drawLine(40f, sumY, 555f, sumY, Paint().apply { color = borderGray; strokeWidth = 0.5f })
@@ -463,8 +448,7 @@ object ExportHelpers {
 
                     // Footer of Summary Page
                     sumCanvas.drawRoundRect(40f, 720f, 555f, 785f, 6f, 6f, Paint().apply { color = lightBgColor })
-                    sumCanvas.drawText("TOTAL GERAL DE ENTREGAS: $totalCount", 55f, 747f, boldPaint.apply { textSize = 11f; color = brandColor })
-                    sumCanvas.drawText("TOTAL GERAL RECEBIDO: R$ %.2f".format(totalEarnings), 55f, 768f, boldPaint.apply { textSize = 13f; color = brandColor })
+                    sumCanvas.drawText("TOTAL GERAL DE ENTREGAS: $totalCount", 55f, 755f, boldPaint.apply { textSize = 11f; color = brandColor })
 
                     pdfDocument.finishPage(summaryPage)
                 }

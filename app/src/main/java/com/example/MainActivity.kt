@@ -456,6 +456,7 @@ fun AddEditDeliveryDialog(
     ) -> Unit
 ) {
     var estName by remember { mutableStateOf(delivery?.establishmentName ?: "") }
+    val context = LocalContext.current
     var clientName by remember { mutableStateOf(delivery?.clientName ?: "") }
     var neighborhood by remember { mutableStateOf(delivery?.neighborhood ?: "") }
     var city by remember { mutableStateOf(delivery?.city ?: "São Paulo") }
@@ -550,14 +551,14 @@ fun AddEditDeliveryDialog(
                     OutlinedTextField(
                         value = feeFartherDeliveriesStr,
                         onValueChange = { feeFartherDeliveriesStr = it },
-                        label = { Text("Taxa Distante (R$)") },
+                        label = { Text("Taxa Distante (R$) *") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = distanceStr,
                         onValueChange = { distanceStr = it },
-                        label = { Text("Distância (km) *") },
+                        label = { Text("Distância (km)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -613,14 +614,27 @@ fun AddEditDeliveryDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val quantity = quantityStr.toIntOrNull() ?: 1
-                    val fee = feePerDeliveryStr.replace(',', '.').toDoubleOrNull() ?: 0.0
-                    val feeFarther = feeFartherDeliveriesStr.replace(',', '.').toDoubleOrNull() ?: 0.0
-                    val value = (quantity * fee) + feeFarther
-                    val distance = distanceStr.replace(',', '.').toDoubleOrNull()
-                    if (estName.isNotEmpty() && feePerDeliveryStr.isNotEmpty() && distance != null) {
+                    val qClean = quantityStr.trim()
+                    val fClean = feePerDeliveryStr.trim()
+                    val fdClean = feeFartherDeliveriesStr.trim()
+                    
+                    val quantity = qClean.toIntOrNull()
+                    val fee = fClean.replace(',', '.').toDoubleOrNull()
+                    val feeFarther = fdClean.replace(',', '.').toDoubleOrNull()
+                    val distance = if (distanceStr.isBlank()) 0.0 else (distanceStr.replace(',', '.').toDoubleOrNull() ?: 0.0)
+
+                    if (estName.trim().isEmpty()) {
+                        Toast.makeText(context, "Nome do estabelecimento é obrigatório", Toast.LENGTH_SHORT).show()
+                    } else if (quantity == null) {
+                        Toast.makeText(context, "Quantidade de entrega é obrigatória", Toast.LENGTH_SHORT).show()
+                    } else if (fee == null) {
+                        Toast.makeText(context, "Taxa de entrega é obrigatória", Toast.LENGTH_SHORT).show()
+                    } else if (feeFarther == null) {
+                        Toast.makeText(context, "Taxa distante/de distância é obrigatória", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val value = (quantity * fee) + feeFarther
                         onSave(
-                            estName,
+                            estName.trim(),
                             neighborhood,
                             city,
                             value,
@@ -1114,7 +1128,7 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
     var name by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
     var neighborhood by remember { mutableStateOf("") }
-    var city by remember { mutableStateOf("São Paulo") }
+    var city by remember { mutableStateOf("Bom Jesus da Lapa") }
     var phone by remember { mutableStateOf("") }
     var contact by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
@@ -1131,11 +1145,17 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
             Text("Parceiros & Rankings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Button(
                 onClick = { showAddDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.wrapContentWidth()
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Adicionar")
+                Text(
+                    text = "Adicionar",
+                    maxLines = 1,
+                    fontSize = androidx.compose.ui.unit.TextUnit.Unspecified,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -1153,7 +1173,7 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("$medal ${item.name}", fontWeight = FontWeight.SemiBold)
-                            Text("${item.deliveriesCount} entregas (R$ %.1f)".format(item.totalEarnings), color = MaterialTheme.colorScheme.primary)
+                            Text("${item.deliveriesCount} entregas", color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -1171,7 +1191,6 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                                Text("R$ %.2f".format(item.totalEarnings), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             }
                             Row {
                                 val originalEst = establishments.find { it.id == item.id }
@@ -1256,14 +1275,28 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
                         } else {
                             Toast.makeText(context, "Nome é obrigatório", Toast.LENGTH_SHORT).show()
                         }
-                    }
+                    },
+                    modifier = Modifier.wrapContentWidth()
                 ) {
-                    Text("Adicionar")
+                    Text(
+                        text = "Adicionar",
+                        maxLines = 1,
+                        fontSize = androidx.compose.ui.unit.TextUnit.Unspecified,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Cancelar")
+                TextButton(
+                    onClick = { showAddDialog = false },
+                    modifier = Modifier.wrapContentWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        maxLines = 1,
+                        fontSize = androidx.compose.ui.unit.TextUnit.Unspecified,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         )
@@ -1304,23 +1337,37 @@ fun EstablishmentsScreen(viewModel: MainViewModel) {
                         } else {
                             Toast.makeText(context, "Nome é obrigatório", Toast.LENGTH_SHORT).show()
                         }
-                    }
+                    },
+                    modifier = Modifier.wrapContentWidth()
                 ) {
-                    Text("Salvar")
+                    Text(
+                        text = "Salvar",
+                        maxLines = 1,
+                        fontSize = androidx.compose.ui.unit.TextUnit.Unspecified,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { 
-                    showEditDialog = false 
-                    // Reset
-                    name = ""
-                    address = ""
-                    neighborhood = ""
-                    phone = ""
-                    contact = ""
-                    notes = ""
-                }) {
-                    Text("Cancelar")
+                TextButton(
+                    onClick = { 
+                        showEditDialog = false 
+                        // Reset
+                        name = ""
+                        address = ""
+                        neighborhood = ""
+                        phone = ""
+                        contact = ""
+                        notes = ""
+                    },
+                    modifier = Modifier.wrapContentWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        maxLines = 1,
+                        fontSize = androidx.compose.ui.unit.TextUnit.Unspecified,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         )
@@ -1534,7 +1581,7 @@ fun GeneralExpensesScreenContent(viewModel: MainViewModel, onFormDirtyChange: (B
     val categories = listOf(
         "Combustível", "Troca de óleo", "Filtro de óleo", "Pneu dianteiro", 
         "Pneu traseiro", "Câmara de ar", "Corrente", "Coroa", "Pinhão", 
-        "Freios", "Embreagem", "Oficina", "Lavagem", "Seguro", "IPVA", 
+        "Freios", "Embreagem", "Oficina", "Lavagem", "Alimentação", "Seguro", "IPVA", 
         "Licenciamento", "Multas", "Outros"
     )
 
@@ -2081,31 +2128,32 @@ fun ReportsScreen(viewModel: MainViewModel) {
 
         // Copyable text report panel
         val reportText = remember(selectedPeriod, stats, deliveries) {
-            val displayEarnings = when (selectedPeriod) {
-                "Diário" -> stats.dayEarnings
-                "Semanal" -> stats.weekEarnings
-                "Mensal" -> stats.monthEarnings
-                else -> stats.yearEarnings
-            }
-            val totalExpenses = stats.fuelExpenses + stats.maintenanceExpenses
-            val netProfit = displayEarnings - totalExpenses
             val count = when (selectedPeriod) {
                 "Diário" -> deliveries.filter { android.text.format.DateUtils.isToday(it.date) }.sumOf { it.quantity }
                 else -> deliveries.sumOf { it.quantity } // fallback
             }
+            val periodDeliveries = when (selectedPeriod) {
+                "Diário" -> deliveries.filter { android.text.format.DateUtils.isToday(it.date) }
+                else -> deliveries
+            }
+            val estsList = periodDeliveries.map { it.establishmentName }.distinct().sorted()
+            val estsText = if (estsList.isEmpty()) {
+                "Nenhum estabelecimento"
+            } else {
+                estsList.joinToString("\n") { "• $it" }
+            }
             
             """
-            *NUCORRE - RELATÓRIO*
+            *NuCorre - Relatório*
             Período: $selectedPeriod
             ------------------------------
             Total de Entregas: $count
-            Ganhos Brutos: R$ %.2f
-            Gastos Totais: R$ %.2f
-            Lucro Líquido: R$ %.2f
-            Km Percorridos: %.1f km
+            ------------------------------
+            Estabelecimentos:
+            $estsText
             ------------------------------
             Gerado em: ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}
-            """.trimIndent().format(displayEarnings, totalExpenses, netProfit, stats.distanceKm)
+            """.trimIndent()
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -2243,10 +2291,25 @@ fun SettingsScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Uni
     val darkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
     val autoTheme by viewModel.useAutoTheme.collectAsStateWithLifecycle()
     val photoUri by viewModel.motoboyPhotoUri.collectAsStateWithLifecycle()
+    val goals by viewModel.goals.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var editName by remember { mutableStateOf(name) }
     var editPhone by remember { mutableStateOf(phone) }
+
+    var editDayGoal by remember { mutableStateOf("") }
+    var editWeekGoal by remember { mutableStateOf("") }
+    var editMonthGoal by remember { mutableStateOf("") }
+
+    LaunchedEffect(goals) {
+        val dg = goals.find { it.type == "Diária" }?.targetValue ?: 100.0
+        val wg = goals.find { it.type == "Semanal" }?.targetValue ?: 600.0
+        val mg = goals.find { it.type == "Mensal" }?.targetValue ?: 2400.0
+
+        editDayGoal = dg.toInt().toString()
+        editWeekGoal = wg.toInt().toString()
+        editMonthGoal = mg.toInt().toString()
+    }
 
     // Synchronize local edit fields when state updates from ViewModel (e.g. database loading or backup restore)
     LaunchedEffect(name, phone) {
@@ -2362,6 +2425,69 @@ fun SettingsScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Uni
                     Icon(Icons.Filled.Save, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Salvar Perfil")
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Minhas Metas de Faturamento", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+
+                OutlinedTextField(
+                    value = editDayGoal,
+                    onValueChange = { editDayGoal = it },
+                    label = { Text("Meta Diária (R$)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = editWeekGoal,
+                    onValueChange = { editWeekGoal = it },
+                    label = { Text("Meta Semanal (R$)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = editMonthGoal,
+                    onValueChange = { editMonthGoal = it },
+                    label = { Text("Meta Mensal (R$)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                val isGoalsValid = editDayGoal.replace(',', '.').toDoubleOrNull() != null &&
+                                   editWeekGoal.replace(',', '.').toDoubleOrNull() != null &&
+                                   editMonthGoal.replace(',', '.').toDoubleOrNull() != null
+
+                val currentDg = goals.find { it.type == "Diária" }?.targetValue ?: 100.0
+                val currentWg = goals.find { it.type == "Semanal" }?.targetValue ?: 600.0
+                val currentMg = goals.find { it.type == "Mensal" }?.targetValue ?: 2400.0
+
+                val goalsChanged = editDayGoal.replace(',', '.').toDoubleOrNull() != currentDg ||
+                                   editWeekGoal.replace(',', '.').toDoubleOrNull() != currentWg ||
+                                   editMonthGoal.replace(',', '.').toDoubleOrNull() != currentMg
+
+                Button(
+                    onClick = {
+                        val d = editDayGoal.replace(',', '.').toDoubleOrNull()
+                        val w = editWeekGoal.replace(',', '.').toDoubleOrNull()
+                        val m = editMonthGoal.replace(',', '.').toDoubleOrNull()
+
+                        if (d != null && w != null && m != null) {
+                            viewModel.updateGoal("Diária", d)
+                            viewModel.updateGoal("Semanal", w)
+                            viewModel.updateGoal("Mensal", m)
+                            Toast.makeText(context, "Metas de faturamento atualizadas!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = isGoalsValid && goalsChanged,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Save, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Salvar Metas")
                 }
             }
         }
