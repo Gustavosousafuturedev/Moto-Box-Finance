@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFF9F0A"
-        android:pathData="M54,24C37.4,24 24,37.4 24,54C24,70.6 37.4,84 54,84C70.6,84 84,70.6 84,54C84,37.4 70.6,24 54,24ZM54,34C65,34 74,43 74,54C74,65 65,74 54,74C43,74 34,65 34,54C34,43 43,34 54,34Z" />
-    <path
-        android:fillColor="#FFFFD60A"
-        android:pathData="M44,48L54,38L64,48L58,48L58,62L50,62L50,48Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/motobox_logo"
+        android:gravity="center" />
+</layer-list>

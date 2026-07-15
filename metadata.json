@@ -1,8 +1,6 @@
 {
-  "name": "MotoGestor",
-  "description": "Gerenciador completo e profissional para entregadores e motociclistas, com controle de entregas, despesas, manutenção de veículos e assistente de IA.",
+  "name": "MOTOBOX Finance",
+  "description": "Aplicativo profissional para motoboys controlarem entregas, faturamento, despesas e manutenção.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
