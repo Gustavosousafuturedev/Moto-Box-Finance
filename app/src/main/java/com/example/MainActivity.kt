@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -179,7 +180,7 @@ fun MainAppScaffold(
 
     Scaffold(
         topBar = {
-            if (currentScreen != Screen.Splash) {
+            if (currentScreen != Screen.Splash && currentScreen != Screen.About && currentScreen != Screen.PrivacyPolicy && currentScreen != Screen.TermsOfUse) {
                 HeaderBar(
                     motoboyName = motoboyName,
                     motoboyPhotoUri = motoboyPhotoUri,
@@ -199,7 +200,7 @@ fun MainAppScaffold(
             }
         },
         bottomBar = {
-            if (currentScreen != Screen.Splash) {
+            if (currentScreen != Screen.Splash && currentScreen != Screen.About && currentScreen != Screen.PrivacyPolicy && currentScreen != Screen.TermsOfUse) {
                 BottomNavBar(
                     currentScreen = currentScreen,
                     onTabSelect = { safeNavigateTo(it) }
@@ -241,7 +242,7 @@ fun MainAppScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (currentScreen != Screen.Splash) Modifier.padding(innerPadding)
+                    if (currentScreen != Screen.Splash && currentScreen != Screen.About && currentScreen != Screen.PrivacyPolicy && currentScreen != Screen.TermsOfUse) Modifier.padding(innerPadding)
                     else Modifier
                 )
         ) {
@@ -260,6 +261,9 @@ fun MainAppScaffold(
                 Screen.Configuracoes -> SettingsScreen(viewModel, onFormDirtyChange = { isFormDirty = it })
                 Screen.ExportarRelatorio -> ExportarRelatorioScreen(viewModel)
                 Screen.RelatorioDetalhadoGanhos -> DetailedEarningsReportScreen(viewModel)
+                Screen.About -> AboutScreen(viewModel)
+                Screen.PrivacyPolicy -> PrivacyPolicyScreen(viewModel)
+                Screen.TermsOfUse -> TermsOfUseScreen(viewModel)
             }
 
             // Discard warning confirmation Dialog
@@ -707,7 +711,7 @@ fun HeaderBar(
                 } else {
                     Image(
                         painter = painterResource(id = R.drawable.img_app_icon),
-                        contentDescription = "Logo NuCorre",
+                        contentDescription = "Logo",
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
@@ -718,7 +722,7 @@ fun HeaderBar(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "NuCorre",
+                        text = stringResource(id = R.string.app_name),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -2307,7 +2311,7 @@ fun PartnerReportScreen(viewModel: MainViewModel) {
         // Generated professional layout
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("NuCorre", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(id = R.string.app_name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Text("Relatório de Entregas", style = MaterialTheme.typography.titleSmall)
                 Text("Emissão: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())}", style = MaterialTheme.typography.labelSmall)
                 HorizontalDivider()
@@ -2421,7 +2425,7 @@ fun SettingsScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Uni
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Configurações do NuCorre", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Configurações do " + stringResource(id = R.string.app_name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2619,6 +2623,119 @@ fun SettingsScreen(viewModel: MainViewModel, onFormDirtyChange: (Boolean) -> Uni
                     Icon(Icons.Filled.Restore, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Restaurar Backup Offline (JSON)")
+                }
+            }
+        }
+
+        var showRatingDialog by remember { mutableStateOf(false) }
+
+        if (showRatingDialog) {
+            AlertDialog(
+                onDismissRequest = { showRatingDialog = false },
+                title = { Text("Tudo pronto!", fontWeight = FontWeight.Bold) },
+                text = { Text("Assim que o " + stringResource(id = R.string.app_name) + " estiver disponível na Google Play, você poderá avaliá-lo diretamente por esta opção.") },
+                confirmButton = {
+                    Button(onClick = { showRatingDialog = false }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("INFORMAÇÕES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Item 1: Sobre o NuCorre
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.navigateTo(Screen.About) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("ℹ", style = MaterialTheme.typography.titleMedium)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sobre o " + stringResource(id = R.string.app_name), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text("Informações sobre o aplicativo, versão e recursos.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                // Item 2: Política de Privacidade
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.navigateTo(Screen.PrivacyPolicy) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("🔒", style = MaterialTheme.typography.titleMedium)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Política de Privacidade", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text("Leia as diretrizes de privacidade dos seus dados.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                // Item 3: Termos de Uso
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.navigateTo(Screen.TermsOfUse) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("📄", style = MaterialTheme.typography.titleMedium)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Termos de Uso", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text("Termos e regras de utilização do aplicativo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                // Item 4: Avaliar o Aplicativo
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showRatingDialog = true }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("⭐", style = MaterialTheme.typography.titleMedium)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Avaliar o Aplicativo", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text("Deixe sua opinião e avaliação na Google Play.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
@@ -3767,6 +3884,516 @@ fun SplashScreen(viewModel: MainViewModel) {
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             alignment = Alignment.Center
         )
+    }
+}
+
+@Composable
+fun InstitutionalFooter() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = stringResource(id = R.string.app_name),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+        )
+        Text(
+            text = "Controle Financeiro para Motoboys",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+        Text(
+            text = "Versão 1.2.0 (Build 20)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "Desenvolvido por Gustavo Sousa",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "© 2026 Todos os direitos reservados.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Contato:",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+        Text(
+            text = "gustavosousa140600@gmail.com",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun PrivacyPolicyScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    val privacyPolicyText = """
+POLÍTICA DE PRIVACIDADE - FAZENDO A MOEDA
+
+Última atualização: 16 de julho de 2026
+
+Bem-vindo ao Fazendo a Moeda! A sua privacidade é de extrema importância para nós. Esta Política de Privacidade descreve como o aplicativo Fazendo a Moeda coleta, usa, armazena e protege as suas informações e dados pessoais.
+
+1. COLETA DE INFORMAÇÕES
+O Fazendo a Moeda é um aplicativo de controle financeiro projetado para funcionar de maneira offline e local. Nós coletamos apenas as informações que você insere diretamente no aplicativo, tais como:
+- Dados do Perfil: Nome do motoboy, número de telefone e foto de perfil opcional.
+- Registros de Entregas: Valores, quantidade de entregas, estabelecimentos parceiros, data e hora.
+- Registros de Veículo: Odômetro, logs de combustível, custos com manutenção e médias de consumo.
+- Registros Financeiros: Despesas operacionais gerais, metas diárias, semanais e mensais.
+
+2. ARMAZENAMENTO LOCAL DOS DADOS
+Todos os seus dados de entregas, despesas, veículo e perfil são armazenados localmente no seu dispositivo Android através de um banco de dados criptografado e seguro (Room SQLite). Nós NÃO possuímos servidores em nuvem próprios para coleta automática de dados pessoais ou financeiros. Os seus dados permanecem sob o seu controle exclusivo no seu dispositivo.
+
+3. RECURSOS DE BACKUP E RESTAURAÇÃO
+O aplicativo disponibiliza a função de exportação/backup em arquivos formato JSON para a pasta de Downloads do seu próprio celular. Você é o único responsável pela guarda e segurança desses arquivos de backup. Caso você opte por restaurá-los, a leitura é feita localmente.
+
+4. COMPARTILHAMENTO DE DADOS
+Por padrão, o Fazendo a Moeda NÃO compartilha, vende, aluga ou distribui quaisquer dados inseridos por você para terceiros ou parceiros externos. A única forma de exportação é realizada ativamente por você através das opções de:
+- Exportação de relatórios em formato PDF e planilha Excel (CSV) para envio manual a terceiros.
+- Envio manual de feedbacks ou relatórios de erros por e-mail para o desenvolvedor.
+
+5. PERMISSÕES REQUERIDAS
+Para o pleno funcionamento das funcionalidades locais, o aplicativo requer acesso a:
+- Armazenamento (opcional): Para salvar backups, relatórios em PDF e carregar a foto do perfil.
+- Câmera/Galeria: Apenas para a seleção de sua foto de perfil.
+- Notificações: Para exibir alertas importantes sobre manutenção pendente e lembretes de fechamento de caixa.
+
+6. SEGURANÇA DOS DADOS
+Empregamos medidas de segurança compatíveis com os padrões do sistema operacional Android para proteger seus dados contra perda ou acesso não autorizado. No entanto, a segurança do dispositivo físico é de sua inteira responsabilidade. Recomendamos o uso de senhas ou biometria no aparelho.
+
+7. ALTERAÇÕES NESTA POLÍTICA
+Reservamo-nos o direito de atualizar esta Política de Privacidade a qualquer momento. Quaisquer modificações serão publicadas no aplicativo com a nova data de revisão.
+
+8. CONTATO
+Se você tiver qualquer dúvida ou sugestão sobre esta Política de Privacidade, entre em contato conosco pelo e-mail:
+gustavosousa140600@gmail.com
+""".trimIndent()
+
+    androidx.activity.compose.BackHandler {
+        viewModel.navigateTo(Screen.Configuracoes)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().statusBarsPadding()
+        ) {
+            IconButton(onClick = { viewModel.navigateTo(Screen.Configuracoes) }) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar")
+            }
+            Text(
+                text = "Política de Privacidade",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = privacyPolicyText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = {
+                    try {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Política de Privacidade - Fazendo a Moeda")
+                            putExtra(Intent.EXTRA_TEXT, privacyPolicyText)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Compartilhar Política de Privacidade"))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Erro ao compartilhar.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Compartilhar", fontWeight = FontWeight.Bold)
+            }
+
+            OutlinedButton(
+                onClick = {
+                    try {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(privacyPolicyText))
+                        Toast.makeText(context, "Texto copiado para a área de transferência!", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Erro ao copiar texto.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Filled.ContentCopy, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Copiar Texto", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        InstitutionalFooter()
+    }
+}
+
+@Composable
+fun TermsOfUseScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    val termsOfUseText = """
+TERMOS DE USO - FAZENDO A MOEDA
+
+Última atualização: 16 de julho de 2026
+
+Estes Termos de Uso regem o acesso e a utilização do aplicativo Fazendo a Moeda - Controle Financeiro para Motoboys. Ao instalar e utilizar o aplicativo, você concorda integralmente com estes termos.
+
+1. DESCRIÇÃO DO SERVIÇO
+O Fazendo a Moeda é uma ferramenta pessoal de gerenciamento financeiro, controle de despesas de veículos, combustível, metas de faturamento e geração de relatórios, projetado especificamente para motoboys e profissionais de entrega.
+
+2. LICENÇA DE USO
+Concedemos a você uma licença pessoal, limitada, revogável, não exclusiva e intransferível para baixar, instalar e utilizar o aplicativo em seu dispositivo móvel estritamente para uso pessoal e profissional de controle autônomo de suas atividades.
+
+3. RESPONSABILIDADE DO USUÁRIO
+Ao utilizar o Fazendo a Moeda, você se compromete a:
+- Fornecer informações corretas para o cálculo correto dos seus ganhos e despesas.
+- Fazer backups offline periódicos de seus dados para evitar perdas acidentais em caso de formatação ou perda do aparelho.
+- Respeitar as leis de trânsito locais e utilizar o aplicativo de forma segura. NUNCA utilize ou interaja com o aplicativo enquanto estiver pilotando a sua motocicleta. A segurança no trânsito deve ser sempre a sua prioridade absoluta.
+
+4. LIMITAÇÃO DE RESPONSABILIDADE
+O Fazendo a Moeda é fornecido "no estado em que se encontra", sem garantias de qualquer tipo, expressas ou implícitas. O desenvolvedor não se responsabiliza por:
+- Perda de dados devido a falhas de hardware, formatação do celular ou desinstalação do aplicativo sem backup prévio.
+- Decisões financeiras, tributárias ou operacionais tomadas com base nas informações e relatórios gerados pelo aplicativo.
+- Eventuais lucros cessantes, acidentes ou danos físicos ocorridos durante o uso do aplicativo ou durante o trabalho de motoboy.
+
+5. PROPRIEDADE INTELECTUAL
+Todo o código-fonte, design visual, logos, marcas, layouts e recursos integrados ao Fazendo a Moeda são de propriedade exclusiva de Gustavo Sousa e estão protegidos por leis de direitos autorais e propriedade intelectual. É proibida a engenharia reversa, cópia ou redistribuição não autorizada de partes do aplicativo.
+
+6. RESCISÃO E ENCERRAMENTO
+Você pode encerrar a utilização dos termos a qualquer momento simplesmente desinstalando o aplicativo de seu aparelho móvel. Os dados locais armazenados serão excluídos permanentemente no processo de desinstalação do sistema operacional.
+
+7. ALTERAÇÕES DOS TERMOS
+Estes termos de uso podem ser modificados a qualquer momento pelo desenvolvedor. O uso contínuo do aplicativo após as alterações constituirá a aceitação dos novos termos.
+
+8. LEGISLAÇÃO E FORO
+Estes termos são regidos pelas leis da República Federativa do Brasil. Para dirimir quaisquer dúvidas decorrentes deste documento, fica eleito o foro da comarca de residência do usuário.
+
+9. SUPORTE E FEEDBACK
+Dúvidas, reclamações ou sugestões podem ser encaminhadas diretamente ao desenvolvedor através do e-mail:
+gustavosousa140600@gmail.com
+""".trimIndent()
+
+    androidx.activity.compose.BackHandler {
+        viewModel.navigateTo(Screen.Configuracoes)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().statusBarsPadding()
+        ) {
+            IconButton(onClick = { viewModel.navigateTo(Screen.Configuracoes) }) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar")
+            }
+            Text(
+                text = "Termos de Uso",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = termsOfUseText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = {
+                    try {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Termos de Uso - Fazendo a Moeda")
+                            putExtra(Intent.EXTRA_TEXT, termsOfUseText)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Compartilhar Termos de Uso"))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Erro ao compartilhar.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Compartilhar", fontWeight = FontWeight.Bold)
+            }
+
+            OutlinedButton(
+                onClick = {
+                    try {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(termsOfUseText))
+                        Toast.makeText(context, "Texto copiado para a área de transferência!", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Erro ao copiar texto.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Filled.ContentCopy, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Copiar Texto", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        InstitutionalFooter()
+    }
+}
+
+@Composable
+fun AboutScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
+
+    androidx.activity.compose.BackHandler {
+        viewModel.navigateTo(Screen.Configuracoes)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().statusBarsPadding()
+        ) {
+            IconButton(onClick = { viewModel.navigateTo(Screen.Configuracoes) }) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar")
+            }
+            Text(
+                text = "Sobre o " + stringResource(id = R.string.app_name),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.img_app_icon),
+                contentDescription = "Logo",
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp)),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+            Text(
+                text = stringResource(id = R.string.app_name),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "Controle Financeiro para Motoboys",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.secondary,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "O " + stringResource(id = R.string.app_name) + " é um aplicativo desenvolvido para auxiliar motoboys no controle de entregas, despesas, manutenção da motocicleta, combustível, metas e geração de relatórios de forma simples, rápida e organizada.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Informações da Versão",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Versão", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("1.2.0 (Build 20)", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Última atualização", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("16/07/2026", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Status", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(modifier = Modifier.size(8.dp).background(Color(0xFF42FF00), CircleShape))
+                        Text("Aplicativo atualizado.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Desenvolvedor", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("Gustavo Sousa", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Contato", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("gustavosousa140600@gmail.com", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Ano", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("© 2026", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Novidades desta versão",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                
+                val updates = listOf(
+                    "Nova identidade visual Fazendo a Moeda",
+                    "Melhorias gerais de estabilidade",
+                    "Melhor desempenho",
+                    "Correções de bugs",
+                    "Melhor compatibilidade com Android",
+                    "Melhorias em relatórios",
+                    "Melhorias na navegação"
+                )
+                updates.forEach { update ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("✔", color = Color(0xFF42FF00), fontWeight = FontWeight.Bold)
+                        Text(update, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Recursos",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                
+                val resources = listOf(
+                    "Controle de Entregas",
+                    "Controle Financeiro",
+                    "Controle de Despesas",
+                    "Controle de Combustível",
+                    "Controle de Manutenção",
+                    "Controle de Quilometragem",
+                    "Relatórios PDF",
+                    "Relatórios Excel",
+                    "Backup",
+                    "Sincronização",
+                    "Metas",
+                    "Estabelecimentos"
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    resources.forEach { res ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(modifier = Modifier.size(6.dp).background(MaterialTheme.colorScheme.secondary, CircleShape))
+                            Text(res, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
+
+        Button(
+            onClick = {
+                try {
+                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                        data = Uri.parse("mailto:")
+                        putExtra(Intent.EXTRA_EMAIL, arrayOf("gustavosousa140600@gmail.com"))
+                        putExtra(Intent.EXTRA_SUBJECT, "Suporte - Fazendo a Moeda")
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Enviar e-mail de suporte..."))
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Não foi possível abrir o aplicativo de e-mail.", Toast.LENGTH_SHORT).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) {
+            Icon(Icons.Filled.Email, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Entrar em contato", fontWeight = FontWeight.Bold)
+        }
+
+        InstitutionalFooter()
     }
 }
 

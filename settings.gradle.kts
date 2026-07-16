@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "NuCorre"
+rootProject.name = "Fazendo a Moeda"
 
 include(":app")

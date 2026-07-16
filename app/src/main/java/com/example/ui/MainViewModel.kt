@@ -28,7 +28,10 @@ enum class Screen {
     RelatorioEstabelecimento,
     Configuracoes,
     ExportarRelatorio,
-    RelatorioDetalhadoGanhos
+    RelatorioDetalhadoGanhos,
+    About,
+    PrivacyPolicy,
+    TermsOfUse
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

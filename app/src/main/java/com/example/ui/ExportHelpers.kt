@@ -277,7 +277,7 @@ object ExportHelpers {
                     }
 
                     pageCanvas.drawText("RELATÓRIO DE ENTREGAS", 100f, 58f, titlePaint)
-                    pageCanvas.drawText("NuCorre • Inteligência Financeira para Entregadores", 100f, 74f, subtitlePaint)
+                    pageCanvas.drawText("Fazendo a Moeda • Inteligência Financeira para Entregadores", 100f, 74f, subtitlePaint)
                     
                     pageCanvas.drawLine(40f, 100f, 555f, 100f, linePaint)
 
@@ -428,7 +428,7 @@ object ExportHelpers {
                 }
                 canvas.drawText("Total Geral de Entregas: $totalCount", 55f, footerY + 24f, totalPaintText)
                 
-                canvas.drawText("Relatório de entregas gerado com segurança através do NuCorre.", 55f, footerY + 44f, subtitlePaint.apply { textSize = 9f })
+                canvas.drawText("Relatório de entregas gerado com segurança através do Fazendo a Moeda.", 55f, footerY + 44f, subtitlePaint.apply { textSize = 9f })
 
                 pdfDocument.finishPage(page)
 
@@ -582,8 +582,8 @@ object ExportHelpers {
     fun shareToEmail(context: Context, uri: Uri) {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "message/rfc822"
-            putExtra(Intent.EXTRA_SUBJECT, "Relatório de Entregas - NuCorre")
-            putExtra(Intent.EXTRA_TEXT, "Olá,\n\nSegue em anexo o relatório de entregas gerado pelo aplicativo NuCorre.")
+            putExtra(Intent.EXTRA_SUBJECT, "Relatório de Entregas - Fazendo a Moeda")
+            putExtra(Intent.EXTRA_TEXT, "Olá,\n\nSegue em anexo o relatório de entregas gerado pelo aplicativo Fazendo a Moeda.")
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

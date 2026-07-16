@@ -38,7 +38,7 @@ class NotificationReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("NuCorre")
+            .setContentTitle(context.getString(R.string.app_name))
             .setContentText("Não se esqueça de anotar suas entregas!")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
