@@ -251,6 +251,7 @@ fun MainAppScaffold(
                 Screen.RelatorioEstabelecimento -> PartnerReportScreen(viewModel)
                 Screen.Configuracoes -> SettingsScreen(viewModel, onFormDirtyChange = { isFormDirty = it })
                 Screen.ExportarRelatorio -> ExportarRelatorioScreen(viewModel)
+                Screen.RelatorioDetalhadoGanhos -> DetailedEarningsReportScreen(viewModel)
             }
 
             // Discard warning confirmation Dialog
@@ -551,7 +552,7 @@ fun AddEditDeliveryDialog(
                     OutlinedTextField(
                         value = feeFartherDeliveriesStr,
                         onValueChange = { feeFartherDeliveriesStr = it },
-                        label = { Text("Taxa Distante (R$) *") },
+                        label = { Text("Taxa Distante (R$)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -620,7 +621,7 @@ fun AddEditDeliveryDialog(
                     
                     val quantity = qClean.toIntOrNull()
                     val fee = fClean.replace(',', '.').toDoubleOrNull()
-                    val feeFarther = fdClean.replace(',', '.').toDoubleOrNull()
+                    val feeFarther = if (fdClean.isEmpty()) 0.0 else fdClean.replace(',', '.').toDoubleOrNull()
                     val distance = if (distanceStr.isBlank()) 0.0 else (distanceStr.replace(',', '.').toDoubleOrNull() ?: 0.0)
 
                     if (estName.trim().isEmpty()) {
@@ -630,7 +631,7 @@ fun AddEditDeliveryDialog(
                     } else if (fee == null) {
                         Toast.makeText(context, "Taxa de entrega é obrigatória", Toast.LENGTH_SHORT).show()
                     } else if (feeFarther == null) {
-                        Toast.makeText(context, "Taxa distante/de distância é obrigatória", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Taxa distante inválida", Toast.LENGTH_SHORT).show()
                     } else {
                         val value = (quantity * fee) + feeFarther
                         onSave(
@@ -895,12 +896,27 @@ fun DashboardScreen(viewModel: MainViewModel) {
         }
 
         // Goals Progress Section
-        Card(modifier = Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.navigateTo(Screen.Metas) }
+        ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Metas e Progresso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Metas e Progresso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = "Editar metas",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                 }
 
                 // Daily Goal
@@ -920,9 +936,24 @@ fun DashboardScreen(viewModel: MainViewModel) {
         // Charts Section
         Text("Estatísticas Visuais", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.navigateTo(Screen.RelatorioDetalhadoGanhos) }
+        ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Ganhos Diários (R$)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Ganhos Diários (R$)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = "Ver faturamento detalhado",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
                 BarChart(data = dayChartData, modifier = Modifier.fillMaxWidth())
             }
         }
@@ -1950,20 +1981,20 @@ fun RegisterCloseScreen(viewModel: MainViewModel) {
         val group = todayDeliveries.groupBy { it.establishmentName }
         val topEst = group.maxByOrNull { it.value.size }?.key ?: "Nenhum"
 
-        """
-        === 🏍️ NuCorre - FECHAMENTO ===
-        Data: ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())}
-        ------------------------------------------
-        • Total de entregas: ${todayDeliveries.size}
-        • Total recebido: R$ %.2f
-        • Total gasto: R$ %.2f
-        • Lucro líquido: R$ %.2f
-        • Combustível: R$ %.2f
-        • Estabelecimento top: $topEst
-        • Tempo trabalhado: $hoursWorked horas
-        ------------------------------------------
-        Gerado pelo NuCorre offline.
-        """.trimIndent().format(stats.dayEarnings, stats.fuelExpenses, stats.dayEarnings - stats.fuelExpenses, stats.fuelExpenses)
+        val sb = java.lang.StringBuilder()
+        sb.append("=== NuCorre - FECHAMENTO ===\n")
+        sb.append("Data: ").append(SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())).append("\n")
+        sb.append("-----\n")
+        sb.append("• Total de entregas: ").append(todayDeliveries.size).append("\n")
+        sb.append("• Total recebido: R$ %.2f\n".format(stats.dayEarnings))
+        sb.append("• Total gasto: R$ %.2f\n".format(stats.fuelExpenses))
+        sb.append("• Lucro líquido: R$ %.2f\n".format(stats.dayEarnings - stats.fuelExpenses))
+        sb.append("• Combustível: R$ %.2f\n".format(stats.fuelExpenses))
+        sb.append("• Estabelecimento top: ").append(topEst).append("\n")
+        sb.append("• Tempo trabalhado: ").append(hoursWorked).append(" horas\n")
+        sb.append("-----\n")
+        sb.append("Gerado pelo NuCorre offline.")
+        sb.toString()
     }
 
     Column(
@@ -2053,7 +2084,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
             Button(onClick = { viewModel.navigateTo(Screen.RelatorioEstabelecimento) }) {
                 Icon(Icons.Filled.Business, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Por Estabelecimento")
+                Text("Por Empresa")
             }
         }
 
@@ -2128,32 +2159,68 @@ fun ReportsScreen(viewModel: MainViewModel) {
 
         // Copyable text report panel
         val reportText = remember(selectedPeriod, stats, deliveries) {
-            val count = when (selectedPeriod) {
-                "Diário" -> deliveries.filter { android.text.format.DateUtils.isToday(it.date) }.sumOf { it.quantity }
-                else -> deliveries.sumOf { it.quantity } // fallback
-            }
             val periodDeliveries = when (selectedPeriod) {
-                "Diário" -> deliveries.filter { android.text.format.DateUtils.isToday(it.date) }
+                "Diário" -> {
+                    deliveries.filter { android.text.format.DateUtils.isToday(it.date) }
+                }
+                "Semanal" -> {
+                    val cal = Calendar.getInstance().apply {
+                        add(Calendar.DAY_OF_YEAR, -7)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    deliveries.filter { it.date >= cal.timeInMillis }
+                }
+                "Mensal" -> {
+                    val cal = Calendar.getInstance().apply {
+                        add(Calendar.DAY_OF_YEAR, -30)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    deliveries.filter { it.date >= cal.timeInMillis }
+                }
+                "Anual" -> {
+                    val cal = Calendar.getInstance().apply {
+                        add(Calendar.DAY_OF_YEAR, -365)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    deliveries.filter { it.date >= cal.timeInMillis }
+                }
                 else -> deliveries
             }
-            val estsList = periodDeliveries.map { it.establishmentName }.distinct().sorted()
-            val estsText = if (estsList.isEmpty()) {
+
+            val count = periodDeliveries.sumOf { it.quantity }
+            val totalValue = periodDeliveries.sumOf { it.value }
+
+            val estGroups = periodDeliveries.groupBy { it.establishmentName }
+                .map { (name, list) -> name to list.sumOf { it.quantity } }
+                .sortedByDescending { it.second }
+
+            val estsText = if (estGroups.isEmpty()) {
                 "Nenhum estabelecimento"
             } else {
-                estsList.joinToString("\n") { "• $it" }
+                estGroups.joinToString("\n") { (name, totalQty) -> "• ${totalQty}x $name" }
             }
-            
-            """
-            *NuCorre - Relatório*
-            Período: $selectedPeriod
-            ------------------------------
-            Total de Entregas: $count
-            ------------------------------
-            Estabelecimentos:
-            $estsText
-            ------------------------------
-            Gerado em: ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}
-            """.trimIndent()
+
+            val sb = java.lang.StringBuilder()
+            sb.append("=== 🏍️ NuCorre - Relatório ===\n")
+            sb.append("Período: ").append(selectedPeriod).append("\n")
+            sb.append("Gerado em: ").append(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())).append("\n")
+            sb.append("------------------------------------------\n")
+            sb.append("• Total de Entregas: ").append(count).append("\n")
+            sb.append("• Ganhos no Período: R$ %.2f\n".format(totalValue))
+            sb.append("------------------------------------------\n")
+            sb.append("Estabelecimentos:\n").append(estsText).append("\n")
+            sb.append("------------------------------------------\n")
+            sb.append("Gerado pelo NuCorre offline.")
+            sb.toString()
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -3356,6 +3423,302 @@ fun ExportarRelatorioScreen(viewModel: MainViewModel) {
                             Icon(Icons.Filled.Email, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Enviar por E-mail")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailedEarningsReportScreen(viewModel: MainViewModel) {
+    val deliveries by viewModel.deliveries.collectAsStateWithLifecycle()
+    val estStats by viewModel.establishmentStatsList.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Period dates filter state (defaults to last 30 days)
+    val calendar = Calendar.getInstance()
+    val defaultEnd = calendar.timeInMillis
+    calendar.add(Calendar.DAY_OF_YEAR, -30)
+    val defaultStart = calendar.timeInMillis
+
+    var customStart by remember { mutableStateOf<Long?>(defaultStart) }
+    var customEnd by remember { mutableStateOf<Long?>(defaultEnd) }
+    var selectedEst by remember { mutableStateOf("Todos") }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
+    val sdfDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+
+    val startDatePickerDialog = remember {
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val cal = Calendar.getInstance()
+                cal.set(year, month, dayOfMonth, 0, 0, 0)
+                customStart = cal.timeInMillis
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+    }
+
+    val endDatePickerDialog = remember {
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val cal = Calendar.getInstance()
+                cal.set(year, month, dayOfMonth, 23, 59, 59)
+                customEnd = cal.timeInMillis
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+    }
+
+    // Filter deliveries
+    val filteredDeliveries = remember(deliveries, customStart, customEnd, selectedEst) {
+        deliveries.filter { d ->
+            val matchesStart = customStart == null || d.date >= customStart!!
+            val matchesEnd = customEnd == null || d.date <= customEnd!!
+            val matchesEst = selectedEst == "Todos" || d.establishmentName == selectedEst
+            matchesStart && matchesEnd && matchesEst
+        }
+    }
+
+    // Group by day (using start-of-day timestamp or dd/MM/yyyy string)
+    val dailyData = remember(filteredDeliveries) {
+        filteredDeliveries.groupBy { d ->
+            val cal = Calendar.getInstance().apply { timeInMillis = d.date }
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            cal.timeInMillis
+        }.map { (dayTimestamp, list) ->
+            val totalQty = list.sumOf { it.quantity }
+            val totalEarnings = list.sumOf { it.value }
+            dayTimestamp to Pair(totalQty, totalEarnings)
+        }.sortedByDescending { it.first }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Back Header
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            IconButton(onClick = { viewModel.navigateTo(Screen.Dashboard) }) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar")
+            }
+            Text(
+                text = "Relatório Detalhado",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
+        // Filters Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Filtros do Relatório",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                // Date Filter Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = { startDatePickerDialog.show() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = customStart?.let { "De: " + sdfDate.format(Date(it)) } ?: "Data Inicial",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Button(
+                        onClick = { endDatePickerDialog.show() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = customEnd?.let { "Até: " + sdfDate.format(Date(it)) } ?: "Data Final",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                // Establishment Selection Dropdown
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Filtrar por Estabelecimento:",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { dropdownExpanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Empresa: $selectedEst", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                        }
+                        DropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Todos os estabelecimentos") },
+                                onClick = { selectedEst = "Todos"; dropdownExpanded = false }
+                            )
+                            estStats.forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text(item.name) },
+                                    onClick = { selectedEst = item.name; dropdownExpanded = false }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Clear Filters button
+                if (customStart != defaultStart || customEnd != defaultEnd || selectedEst != "Todos") {
+                    TextButton(
+                        onClick = {
+                            customStart = defaultStart
+                            customEnd = defaultEnd
+                            selectedEst = "Todos"
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Limpar Filtros")
+                    }
+                }
+            }
+        }
+
+        // Summary Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Total de Entregas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("${filteredDeliveries.sumOf { it.quantity }}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+                Box(
+                    modifier = Modifier
+                        .height(40.dp)
+                        .width(1.dp)
+                        .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f))
+                )
+                Column {
+                    Text("Total Faturado", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("R$ %.2f".format(filteredDeliveries.sumOf { it.value }), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+
+        // Table
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Ganhos Consolidados por Dia",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (dailyData.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Nenhum faturamento registrado no período selecionado.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                } else {
+                    // Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Dia", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
+                        Text("Qtd. Entregas", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                        Text("Ganhos (R$)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.weight(1.2f))
+                    }
+                    HorizontalDivider()
+
+                    dailyData.forEachIndexed { index, (dayTime, data) ->
+                        val dateString = sdfDate.format(Date(dayTime))
+                        val (qty, earnings) = data
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (index % 2 == 1) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                    else Color.Transparent,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(dateString, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.5f))
+                            Text("$qty", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            Text("R$ %.2f".format(earnings), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1.2f))
+                        }
+                        if (index < dailyData.lastIndex) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
                     }
                 }

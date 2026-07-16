@@ -26,7 +26,8 @@ enum class Screen {
     Relatorios,
     RelatorioEstabelecimento,
     Configuracoes,
-    ExportarRelatorio
+    ExportarRelatorio,
+    RelatorioDetalhadoGanhos
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

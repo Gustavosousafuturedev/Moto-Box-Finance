@@ -183,6 +183,13 @@ object ExportHelpers {
         val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val sdfMonth = SimpleDateFormat("MMMM_yyyy", Locale( "pt", "BR"))
         
+        val displayPeriod = if (period == "Personalizado" && customStart != null && customEnd != null) {
+            val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            "${df.format(Date(customStart))} até ${df.format(Date(customEnd))}"
+        } else {
+            period
+        }
+
         val fileName = when (period) {
             "Hoje" -> "Entregas_${sdfDate.format(Date())}.pdf"
             "Este mês" -> "Entregas_${sdfMonth.format(Date()).replaceFirstChar { it.uppercase() }}.pdf"
@@ -204,8 +211,8 @@ object ExportHelpers {
             FileOutputStream(file).use { outputStream ->
                 val pdfDocument = PdfDocument()
                 val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-                var page = pdfDocument.startPage(pageInfo)
-                var canvas = page.canvas
+                val page = pdfDocument.startPage(pageInfo)
+                val canvas = page.canvas
 
                 // Paints setup
                 val brandColor = android.graphics.Color.parseColor("#aa00fa")
@@ -281,7 +288,7 @@ object ExportHelpers {
                     
                     val currentDateTime = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
                     pageCanvas.drawText("Emissão: $currentDateTime", 360f, 120f, normalPaint)
-                    pageCanvas.drawText("Período: $period", 360f, 136f, normalPaint)
+                    pageCanvas.drawText("Período: $displayPeriod", 360f, 136f, normalPaint)
                     pageCanvas.drawText("Estab.: $selectedEstName", 360f, 152f, normalPaint)
 
                     pageCanvas.drawLine(40f, 165f, 555f, 165f, linePaint)
@@ -290,168 +297,140 @@ object ExportHelpers {
                 // Draw page 1 header
                 drawPageHeader(1, canvas)
 
-                // Table Header positions
-                val xData = 40f
-                val xHora = 100f
-                val xEstab = 150f
-                val xBairro = 310f
-                val xCidade = 430f
-
                 var y = 185f
+                val isDetailed = deliveries.size <= 22
 
-                // Draw Table Headers
-                canvas.drawText("Data", xData, y, tableHeaderPaint)
-                canvas.drawText("Hora", xHora, y, tableHeaderPaint)
-                canvas.drawText("Estabelecimento", xEstab, y, tableHeaderPaint)
-                canvas.drawText("Bairro", xBairro, y, tableHeaderPaint)
-                canvas.drawText("Cidade", xCidade, y, tableHeaderPaint)
+                // Draw Table Headers based on mode
+                if (isDetailed) {
+                    canvas.drawText("Data", 40f, y, tableHeaderPaint)
+                    canvas.drawText("Hora", 100f, y, tableHeaderPaint)
+                    canvas.drawText("Estabelecimento", 145f, y, tableHeaderPaint)
+                    canvas.drawText("Bairro", 300f, y, tableHeaderPaint)
+                    canvas.drawText("Cidade", 415f, y, tableHeaderPaint)
+                    canvas.drawText("Qtd", 525f, y, tableHeaderPaint)
+                } else {
+                    canvas.drawText("Estabelecimento", 40f, y, tableHeaderPaint)
+                    canvas.drawText("Qtd. Entregas", 280f, y, tableHeaderPaint)
+                    canvas.drawText("Bairro Principal", 380f, y, tableHeaderPaint)
+                    canvas.drawText("Cidade Principal", 480f, y, tableHeaderPaint)
+                }
 
                 y += 8f
                 canvas.drawLine(40f, y, 555f, y, Paint(linePaint).apply { strokeWidth = 1.5f })
                 y += 16f
 
                 val rowSdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                var hasTruncation = false
+                var totalEstablishments = 0
 
                 if (deliveries.isEmpty()) {
                     canvas.drawText("Nenhuma entrega registrada para o período selecionado.", 100f, 250f, subtitlePaint.apply { textSize = 11f })
                 } else {
-                    deliveries.forEachIndexed { index, d ->
-                        // Page boundary check
-                        if (y > 750f) {
-                            pdfDocument.finishPage(page)
-                            val newPageInfo = PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create()
-                            page = pdfDocument.startPage(newPageInfo)
-                            canvas = page.canvas
-                            
-                            // Draw header on new page
-                            drawPageHeader(pdfDocument.pages.size, canvas)
-                            
-                            y = 185f
-                            canvas.drawText("Data", xData, y, tableHeaderPaint)
-                            canvas.drawText("Hora", xHora, y, tableHeaderPaint)
-                            canvas.drawText("Estabelecimento", xEstab, y, tableHeaderPaint)
-                            canvas.drawText("Bairro", xBairro, y, tableHeaderPaint)
-                            canvas.drawText("Cidade", xCidade, y, tableHeaderPaint)
+                    if (isDetailed) {
+                        deliveries.forEachIndexed { index, d ->
+                            // Shaded row background for alternate rows
+                            if (index % 2 == 1) {
+                                canvas.drawRect(40f, y - 11f, 555f, y + 5f, shadedBgPaint)
+                            }
+
+                            val dateStr = rowSdf.format(Date(d.date))
+                            canvas.drawText(dateStr, 40f, y, normalPaint)
+                            canvas.drawText(d.time, 100f, y, normalPaint)
+
+                            val estTrunc = if (d.establishmentName.length > 22) d.establishmentName.take(20) + ".." else d.establishmentName
+                            canvas.drawText(estTrunc, 145f, y, normalPaint)
+
+                            val neighborhoodTrunc = if (d.neighborhood.length > 18) d.neighborhood.take(16) + ".." else d.neighborhood
+                            canvas.drawText(neighborhoodTrunc, 300f, y, normalPaint)
+
+                            val cityTrunc = if (d.city.length > 18) d.city.take(16) + ".." else d.city
+                            canvas.drawText(cityTrunc, 415f, y, normalPaint)
+
+                            canvas.drawText(d.quantity.toString(), 525f, y, boldPaint)
 
                             y += 8f
-                            canvas.drawLine(40f, y, 555f, y, Paint(linePaint).apply { strokeWidth = 1.5f })
-                            y += 16f
+                            canvas.drawLine(40f, y, 555f, y, Paint().apply { color = borderGray; strokeWidth = 0.5f })
+                            y += 12f
+                        }
+                    } else {
+                        // Aggregated View
+                        val grouped = deliveries.groupBy { it.establishmentName }
+                        totalEstablishments = grouped.size
+                        val aggregatedList = grouped.map { (estName, list) ->
+                            val totalQty = list.sumOf { it.quantity }
+                            val mainBairro = list.groupBy { it.neighborhood }.maxByOrNull { it.value.size }?.key ?: ""
+                            val mainCidade = list.groupBy { it.city }.maxByOrNull { it.value.size }?.key ?: ""
+                            Triple(estName, totalQty, Pair(mainBairro, mainCidade))
+                        }.sortedByDescending { it.second }
+
+                        val displayList = if (aggregatedList.size > 22) {
+                            hasTruncation = true
+                            aggregatedList.take(22)
+                        } else {
+                            aggregatedList
                         }
 
-                        // Shaded row background for alternate rows
-                        if (index % 2 == 1) {
-                            canvas.drawRect(40f, y - 11f, 555f, y + 5f, shadedBgPaint)
+                        displayList.forEachIndexed { index, triple ->
+                            val estName = triple.first
+                            val totalQty = triple.second
+                            val mainBairro = triple.third.first
+                            val mainCidade = triple.third.second
+
+                            if (index % 2 == 1) {
+                                canvas.drawRect(40f, y - 11f, 555f, y + 5f, shadedBgPaint)
+                            }
+
+                            val estTrunc = if (estName.length > 32) estName.take(30) + ".." else estName
+                            canvas.drawText(estTrunc, 40f, y, normalPaint)
+
+                            canvas.drawText(totalQty.toString(), 280f, y, boldPaint)
+
+                            val bTrunc = if (mainBairro.length > 18) mainBairro.take(16) + ".." else mainBairro
+                            canvas.drawText(bTrunc, 380f, y, normalPaint)
+
+                            val cTrunc = if (mainCidade.length > 18) mainCidade.take(16) + ".." else mainCidade
+                            canvas.drawText(cTrunc, 480f, y, normalPaint)
+
+                            y += 8f
+                            canvas.drawLine(40f, y, 555f, y, Paint().apply { color = borderGray; strokeWidth = 0.5f })
+                            y += 12f
                         }
-
-                        val dateStr = rowSdf.format(Date(d.date))
-                        canvas.drawText(dateStr, xData, y, normalPaint)
-                        canvas.drawText(d.time, xHora, y, normalPaint)
-
-                        val estTrunc = if (d.establishmentName.length > 22) d.establishmentName.take(20) + ".." else d.establishmentName
-                        canvas.drawText(estTrunc, xEstab, y, normalPaint)
-
-                        val neighborhoodTrunc = if (d.neighborhood.length > 18) d.neighborhood.take(16) + ".." else d.neighborhood
-                        canvas.drawText(neighborhoodTrunc, xBairro, y, normalPaint)
-
-                        val cityTrunc = if (d.city.length > 18) d.city.take(16) + ".." else d.city
-                        canvas.drawText(cityTrunc, xCidade, y, normalPaint)
-
-                        y += 8f
-                        canvas.drawLine(40f, y, 555f, y, Paint().apply { color = borderGray; strokeWidth = 0.5f })
-                        y += 12f
                     }
                 }
 
-                // Totals Card Block (if space allows, otherwise on a new page)
-                if (y > 700f) {
-                    pdfDocument.finishPage(page)
-                    val newPageInfo = PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create()
-                    page = pdfDocument.startPage(newPageInfo)
-                    canvas = page.canvas
-                    drawPageHeader(pdfDocument.pages.size, canvas)
-                    y = 185f
-                }
-
+                // Anchored Single Page Footer Totals Card Block
+                val footerY = 730f
                 val totalCount = deliveries.sumOf { it.quantity }
 
-                canvas.drawRoundRect(40f, y, 555f, y + 50f, 6f, 6f, Paint().apply { color = lightBgColor })
+                val italicPaint = Paint().apply {
+                    color = grayText
+                    textSize = 8.5f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+                    isAntiAlias = true
+                }
+
+                if (!isDetailed) {
+                    val noteText = if (hasTruncation) {
+                        "* Relatório resumido — mostrando 22 estabelecimentos de um total de $totalEstablishments."
+                    } else {
+                        "* Relatório resumido agrupado por estabelecimento — $totalEstablishments parceiros no total."
+                    }
+                    canvas.drawText(noteText, 45f, footerY - 10f, italicPaint)
+                }
+
+                canvas.drawRoundRect(40f, footerY, 555f, footerY + 60f, 6f, 6f, Paint().apply { color = lightBgColor })
                 
-                val totalPaintText = Paint(normalPaint).apply { textSize = 11f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); color = brandColor }
-                canvas.drawText("Total de Entregas: $totalCount", 55f, y + 22f, totalPaintText)
+                val totalPaintText = Paint(normalPaint).apply { 
+                    textSize = 12f 
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) 
+                    color = brandColor 
+                    isAntiAlias = true
+                }
+                canvas.drawText("Total Geral de Entregas: $totalCount", 55f, footerY + 24f, totalPaintText)
                 
-                canvas.drawText("Relatório de entregas gerado com segurança através do NuCorre.", 55f, y + 38f, subtitlePaint.apply { textSize = 8.5f })
+                canvas.drawText("Relatório de entregas gerado com segurança através do NuCorre.", 55f, footerY + 44f, subtitlePaint.apply { textSize = 9f })
 
                 pdfDocument.finishPage(page)
-
-                // IF TODOS OS ESTABELECIMENTOS -> Create second page (or summary page)
-                if (selectedEstName == "Todos os estabelecimentos" && deliveries.isNotEmpty()) {
-                    val summaryPageInfo = PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create()
-                    val summaryPage = pdfDocument.startPage(summaryPageInfo)
-                    val sumCanvas = summaryPage.canvas
-
-                    // Header for Summary Page
-                    try {
-                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.img_nucorre_logo_1784120333345)
-                        if (logo != null) {
-                            val scaledLogo = Bitmap.createScaledBitmap(logo, 45, 45, true)
-                            sumCanvas.drawBitmap(scaledLogo, 40f, 40f, null)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Erro ao carregar logo no resumo", e)
-                    }
-
-                    sumCanvas.drawText("RESUMO POR ESTABELECIMENTO", 100f, 58f, titlePaint)
-                    sumCanvas.drawText("NuCorre • Total Geral de Entregas Consolidadas", 100f, 74f, subtitlePaint)
-                    sumCanvas.drawLine(40f, 100f, 555f, 100f, linePaint)
-
-                    // Info block
-                    sumCanvas.drawText("Entregador: $motoboyName", 40f, 120f, normalPaint)
-                    sumCanvas.drawText("Telefone: $motoboyPhone", 40f, 136f, normalPaint)
-                    sumCanvas.drawText("Cidade: $motoboyCity", 40f, 152f, normalPaint)
-                    
-                    sumCanvas.drawText("Emissão: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())}", 360f, 120f, normalPaint)
-                    sumCanvas.drawLine(40f, 165f, 555f, 165f, linePaint)
-
-                    var sumY = 180f
-                    sumCanvas.drawText("Estabelecimento", 40f, sumY, tableHeaderPaint.apply { textSize = 11f })
-                    sumCanvas.drawText("Quantidade de Entregas", 330f, sumY, tableHeaderPaint)
-
-                    sumY += 8f
-                    sumCanvas.drawLine(40f, sumY, 555f, sumY, Paint(linePaint).apply { strokeWidth = 1.5f })
-                    sumY += 20f
-
-                    // Group by establishment
-                    val grouped = deliveries.groupBy { it.establishmentName }
-                    var index = 0
-                    grouped.forEach { (estName, list) ->
-                        if (sumY > 720f) {
-                            pdfDocument.finishPage(summaryPage)
-                            // This handles if we have many establishments in summary, unlikely but safe
-                            val nextSumPageInfo = PdfDocument.PageInfo.Builder(595, 842, pdfDocument.pages.size + 1).create()
-                            val nextSumPage = pdfDocument.startPage(nextSumPageInfo)
-                            // Drawing same header
-                            // ...
-                        }
-
-                        if (index % 2 == 1) {
-                            sumCanvas.drawRect(40f, sumY - 14f, 555f, sumY + 6f, shadedBgPaint)
-                        }
-
-                        sumCanvas.drawText(estName, 40f, sumY, normalPaint.apply { textSize = 11f })
-                        sumCanvas.drawText(list.sumOf { it.quantity }.toString(), 330f, sumY, boldPaint.apply { textSize = 11f })
-
-                        sumY += 10f
-                        sumCanvas.drawLine(40f, sumY, 555f, sumY, Paint().apply { color = borderGray; strokeWidth = 0.5f })
-                        sumY += 15f
-                        index++
-                    }
-
-                    // Footer of Summary Page
-                    sumCanvas.drawRoundRect(40f, 720f, 555f, 785f, 6f, 6f, Paint().apply { color = lightBgColor })
-                    sumCanvas.drawText("TOTAL GERAL DE ENTREGAS: $totalCount", 55f, 755f, boldPaint.apply { textSize = 11f; color = brandColor })
-
-                    pdfDocument.finishPage(summaryPage)
-                }
 
                 pdfDocument.writeTo(outputStream)
                 pdfDocument.close()

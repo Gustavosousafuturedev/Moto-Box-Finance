@@ -105,14 +105,31 @@ fun PieChart(
     data: List<Pair<String, Float>>,
     modifier: Modifier = Modifier,
     colors: List<Color> = listOf(
-        Color(0xFF2196F3), // Ocean Blue
-        Color(0xFF4CAF50), // Emerald Green
-        Color(0xFFE91E63), // Coral Pink/Red
-        Color(0xFFFFC107), // Warm Amber
-        Color(0xFF00BCD4), // Electric Cyan
-        Color(0xFF9C27B0), // Deep Purple
-        Color(0xFFFF5722), // Vibrant Orange
-        Color(0xFF8BC34A)  // Lime Green
+        Color(0xFF2196F3), // Blue
+        Color(0xFFFF5722), // Deep Orange
+        Color(0xFF4CAF50), // Green
+        Color(0xFFE91E63), // Pink
+        Color(0xFFFFC107), // Amber/Yellow
+        Color(0xFF00BCD4), // Cyan
+        Color(0xFF9C27B0), // Purple
+        Color(0xFF8BC34A), // Lime
+        Color(0xFFE040FB), // Light Purple
+        Color(0xFF00E676), // Bright Green
+        Color(0xFFFF1744), // Red
+        Color(0xFF2979FF), // Electric Blue
+        Color(0xFFFFEA00), // Sunny Yellow
+        Color(0xFF00B0FF), // Neon Blue
+        Color(0xFFAA00FF), // Deep Violet
+        Color(0xFFFF6D00), // Orange
+        Color(0xFF1DE9B6), // Mint/Teal
+        Color(0xFFD500F9), // Fuchsia
+        Color(0xFF76FF03), // Neon Lime
+        Color(0xFF3D5AFE), // Royal Blue
+        Color(0xFFFF3D00), // Scarlet
+        Color(0xFF00E5FF), // Aqua/Sky Blue
+        Color(0xFFF50057), // Rose
+        Color(0xFF651FFF), // Indigo
+        Color(0xFF00C853)  // Emerald
     )
 ) {
     val total = data.sumOf { it.second.toDouble() }.toFloat()
