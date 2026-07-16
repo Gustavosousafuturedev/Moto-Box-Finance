@@ -15,6 +15,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 
 enum class Screen {
+    Splash,
     Dashboard,
     CadastroEntrega,
     CadastroEstabelecimento,
@@ -51,7 +52,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Current screen navigation state
-    private val _currentScreen = MutableStateFlow(Screen.Dashboard)
+    private val _currentScreen = MutableStateFlow(Screen.Splash)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     // Flows from database

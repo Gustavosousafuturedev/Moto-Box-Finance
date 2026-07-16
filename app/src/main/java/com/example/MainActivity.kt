@@ -179,28 +179,32 @@ fun MainAppScaffold(
 
     Scaffold(
         topBar = {
-            HeaderBar(
-                motoboyName = motoboyName,
-                motoboyPhotoUri = motoboyPhotoUri,
-                alertCount = odometerAlerts.size,
-                onAlertClick = { safeNavigateTo(Screen.ControleManutencao) },
-                onNavigateConfig = { safeNavigateTo(Screen.Configuracoes) },
-                onBackupClick = {
-                    viewModel.triggerBackup(context) { success, msg ->
-                        if (success) {
-                            Toast.makeText(context, "Backup offline salvo com sucesso!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Erro ao realizar backup: $msg", Toast.LENGTH_SHORT).show()
+            if (currentScreen != Screen.Splash) {
+                HeaderBar(
+                    motoboyName = motoboyName,
+                    motoboyPhotoUri = motoboyPhotoUri,
+                    alertCount = odometerAlerts.size,
+                    onAlertClick = { safeNavigateTo(Screen.ControleManutencao) },
+                    onNavigateConfig = { safeNavigateTo(Screen.Configuracoes) },
+                    onBackupClick = {
+                        viewModel.triggerBackup(context) { success, msg ->
+                            if (success) {
+                                Toast.makeText(context, "Backup offline salvo com sucesso!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Erro ao realizar backup: $msg", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         },
         bottomBar = {
-            BottomNavBar(
-                currentScreen = currentScreen,
-                onTabSelect = { safeNavigateTo(it) }
-            )
+            if (currentScreen != Screen.Splash) {
+                BottomNavBar(
+                    currentScreen = currentScreen,
+                    onTabSelect = { safeNavigateTo(it) }
+                )
+            }
         },
         floatingActionButton = {
             if (currentScreen == Screen.Dashboard || currentScreen == Screen.CadastroEntrega) {
@@ -236,9 +240,13 @@ fun MainAppScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .then(
+                    if (currentScreen != Screen.Splash) Modifier.padding(innerPadding)
+                    else Modifier
+                )
         ) {
             when (currentScreen) {
+                Screen.Splash -> SplashScreen(viewModel)
                 Screen.Dashboard -> DashboardScreen(viewModel)
                 Screen.CadastroEntrega -> DeliveriesScreen(viewModel, onEditDelivery = { editingDelivery = it })
                 Screen.CadastroEstabelecimento -> EstablishmentsScreen(viewModel)
@@ -698,13 +706,13 @@ fun HeaderBar(
                     )
                 } else {
                     Image(
-                        painter = painterResource(id = R.drawable.img_nucorre_logo_1784120333345),
+                        painter = painterResource(id = R.drawable.img_app_icon),
                         contentDescription = "Logo NuCorre",
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(Color.White)
-                            .border(1.5.dp, MaterialTheme.colorScheme.onPrimary, CircleShape)
+                            .border(1.5.dp, MaterialTheme.colorScheme.onPrimary, CircleShape),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -3724,6 +3732,41 @@ fun DetailedEarningsReportScreen(viewModel: MainViewModel) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SplashScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+
+    // Force status bar to have light icons (dark background)
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (context as? android.app.Activity)?.window
+            if (window != null) {
+                androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(2500)
+        viewModel.navigateTo(Screen.Dashboard)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF2C0C4D))
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.img_splash_nucorre),
+            contentDescription = "Tela de Abertura NuCorre",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            alignment = Alignment.Center
+        )
     }
 }
 

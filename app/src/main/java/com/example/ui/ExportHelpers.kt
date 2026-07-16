@@ -267,7 +267,7 @@ object ExportHelpers {
                 fun drawPageHeader(pageNum: Int, pageCanvas: Canvas) {
                     // Try drawing logo
                     try {
-                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.img_nucorre_logo_1784120333345)
+                        val logo = BitmapFactory.decodeResource(context.resources, R.drawable.img_app_icon)
                         if (logo != null) {
                             val scaledLogo = Bitmap.createScaledBitmap(logo, 45, 45, true)
                             pageCanvas.drawBitmap(scaledLogo, 40f, 40f, null)
